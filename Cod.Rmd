@@ -1,0 +1,3677 @@
+---
+title: "Proiect Statistica"
+author:
+  - Maria-Alexandra GHIȚĂ (Grupa 311)
+  - Luis-Antonio HUSDUP (Grupa 311)
+  - George-Eduard NEDELESCU (Grupa 311)
+  - George-Robert MARCU (Grupa 311)
+date: null
+output:
+  html_document: default
+  word_document: default
+  pdf_document:
+    latex_engine: xelatex
+    keep_tex: true
+header-includes:
+  - \usepackage{xcolor}
+  - \usepackage{amsmath, amssymb, amsfonts}
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE, message = FALSE, warning = FALSE,
+  fig.width = 7, fig.height = 4
+)
+set.seed(123)
+
+library(dplyr)
+library(ggplot2)
+library(plotly)
+```
+
+# Capitoul 1 -- Inegalitatea lui Kantorovich-prezentare generală
+
+## Exercițiul 1
+
+### 1.1
+
+```{r}
+m <- 2
+M <- 7
+set.seed(123)
+n <- 6
+vector_lambda <- sort(runif(n,m,M))
+vector_lambda
+```
+
+### 1.2
+
+```{r}
+#definim laplace
+my_rlaplace <- function(n, mu = 0, b = 1) {
+  # Diferența a două exponențiale generează Laplace standard, apoi ajustăm cu mu și b
+  u1 <- rexp(n)
+  u2 <- rexp(n)
+  return(mu + b * (u1 - u2))
+}
+
+selector <- 1
+rate <- 1
+y <- switch(
+  selector,
+  rnorm(n,0,1),
+  rt(n,3),
+  rt(n,4),
+  rt(n,5),
+  my_rlaplace(n),
+  rexp(n,rate)
+)
+p <- (y^2)/sum(y^2)
+
+p
+```
+
+### 1.3
+
+```{r}
+T_pmf<- data.frame(
+  Lambda_i = vector_lambda,
+  Probabilitate  = p
+)
+T_pmf
+
+# Cautam in data.frame
+probabilitatea <- T_pmf$Probabilitate[T_pmf$Lambda_i == vector_lambda[1]]
+probabilitatea
+```
+
+### 1.4
+
+```{r}
+#reordonam descrescator T_pmf dupa p_i(optimizare)
+T_pmf_nou <- T_pmf %>% arrange(desc(Probabilitate))
+T_pmf_nou
+
+F_inversa <- function(u,T_pmf_nou){
+  suma <- 0
+  for(i in 1:nrow(T_pmf_nou)){
+    if(u>suma & u<=T_pmf_nou$Probabilitate[i]+suma){
+      return(T_pmf_nou$Lambda_i[i])
+    }
+    suma=suma+T_pmf_nou$Probabilitate[i]
+  }
+}
+
+N <- 10^6
+T_observat <- replicate(N,{
+  u <- runif(1)
+  t <- F_inversa(u,T_pmf_nou)
+  t
+})
+
+hist(T_observat)
+
+T_empiric <- mean(T_observat)
+T_invers_empiric <- mean(1/T_observat)
+R_N_empiric <-T_empiric*T_invers_empiric 
+
+T_empiric
+T_invers_empiric
+R_N_empiric
+
+abline(v=T_empiric, col = "red", lwd = 3, lty = 2)
+abline(v=T_invers_empiric, col = "red", lwd = 3, lty = 2)
+```
+
+### 1.5
+
+```{r}
+B <- (M+m)^2 / (4*M*m) #media teoretica a lui R_n
+abs(R_N_empiric-B)
+```
+
+```{r}
+m_vals <- seq(3, 5, length.out = 60) # Axa m
+M_vals <- seq(3, 5, length.out = 60) # Axa M
+
+f_mea <- function(m, M) {
+  n <- 6
+  vector_lambda <- sort(runif(n,m,M))
+  selector <- 5
+  rate <- 1
+  y <- switch(
+    selector,
+    rnorm(n,0,1),
+    rt(n,3),
+    rt(n,4),
+    rt(n,5),
+    my_rlaplace(n),
+    rexp(n,rate)
+  )
+  p <- (y^2)/sum(y^2)
+  T_pmf<- data.frame(
+    Lambda_i = vector_lambda,
+    Probabilitate  = p
+  )
+  T_pmf_nou <- T_pmf %>% arrange(desc(Probabilitate))
+  N <- 10^2
+  T_observat <- replicate(N,{
+    u <- runif(1)
+    t <- F_inversa(u,T_pmf_nou)
+    t
+  })
+  T_empiric <- mean(T_observat)
+  T_invers_empiric <- mean(1/T_observat)
+  R_N_empiric <-T_empiric*T_invers_empiric 
+  B <- (M+m)^2 / (4*M*m) #media teoretica a lui R_n
+  return(abs(R_N_empiric-B))
+}
+
+z <- matrix(NA, nrow = length(m_vals), ncol = length(M_vals))
+
+for(i in 1:length(m_vals)) {
+  for(j in 1:length(M_vals)) {
+    val_m <- m_vals[i]
+    val_M <- M_vals[j]
+    
+    if(val_m < val_M) {
+      z[i, j] <- f_mea(val_m, val_M)
+    } else {
+      z[i, j] <- NA
+    }
+  }
+}
+```
+
+```{r, eval=knitr::is_html_output()}
+plot_ly(x = ~m_vals, y = ~M_vals, z = ~t(z)) %>%
+  add_surface() %>%
+  layout(
+    title = "Funcție definită manual (fără outer)",
+    scene = list(
+      xaxis = list(title = "m"),
+      yaxis = list(title = "M"),
+      zaxis = list(title = "Z")
+    )
+  )
+```
+
+```{r}
+##################
+z <- matrix(NA, nrow = length(m_vals), ncol = length(M_vals))
+
+for(i in 1:length(m_vals)) {
+  for(j in 1:length(M_vals)) {
+    val_m <- m_vals[i]
+    val_M <- M_vals[j]
+    
+    if(val_m < val_M) {
+      z[i, j] <- val_M/val_m
+    } else {
+      z[i, j] <- NA
+    }
+  }
+}
+```
+
+```{r, eval=knitr::is_html_output()}
+plot_ly(x = ~m_vals, y = ~M_vals, z = ~t(z)) %>%
+  add_surface() %>%
+  layout(
+    title = "Funcție definită manual (fără outer)",
+    scene = list(
+      xaxis = list(title = "m"),
+      yaxis = list(title = "M"),
+      zaxis = list(title = "Z")
+    )
+  )
+```
+
+## Exercițiul 2
+
+### 2.1
+
+```{r}
+N_valori <- c(10^2,10^3,10^4)
+tabel_final <- data.frame()
+
+T_media_teoretica <- vector_lambda %*% p #produs scalar
+T_invers_media_teoretica <- (1/vector_lambda) %*% p
+
+for(N in N_valori){
+  T_observat <- replicate(N,{
+    u <- runif(1)
+    t <- F_inversa(u,T_pmf_nou)
+    t
+  })
+  T_empiric <- mean(T_observat)
+  T_invers_empiric <- mean(1/T_observat)
+  
+  rand_nou <- data.frame(
+    N = N,
+    T_Empiric = T_empiric,
+    T_Teoretic = T_media_teoretica,
+    
+    T_Invers_Empiric = T_invers_empiric,
+    T_Invers_Teoretic = T_invers_media_teoretica,
+
+    Eroare_Abs = abs(T_empiric - T_media_teoretica),
+    Eroare_Abs_Inversa = abs(T_invers_empiric-T_invers_media_teoretica)
+  )
+  
+  tabel_final <- rbind(tabel_final, rand_nou)
+}
+
+tabel_final
+```
+
+### 2.2
+
+Pentru a justifica teoretic convergența estimatorului $\hat{R}_N$, ne
+bazăm pe *Legea Slabă a Numerelor Mari (LSNM) în formă vectorială* și pe
+*Teorema Aplicațiilor Continue (TAC)*.
+
+Fie vectorii aleatori bidimensionali $X_1, X_2, \dots, X_N$ independenți
+și identic distribuiți (i.i.d.), definiți astfel: $$
+\mathbf{X}_i = \begin{pmatrix} T_i \\ \frac{1}{T_i} \end{pmatrix}, \quad i=1, \dots, N
+$$ unde $T_i$ sunt variabile aleatoare cu suportul în intervalul finit
+$[m, M]$ ($m > 0$). Deoarece variabila este mărginită, momentele de
+ordinul 1 sunt finite.
+
+Notăm vectorul mediilor teoretice cu $\boldsymbol{\mu}$: $$
+\boldsymbol{\mu} = \mathbb{E}[\mathbf{X}_1] = \begin{pmatrix} \mathbb{E}[T] \\ \mathbb{E}[1/T] \end{pmatrix}
+$$
+
+Definim estimatorul de selecție vectorial (media empirică vectorială):
+$$
+\mathbf{\overline{X}}N = \frac{1}{N} \sum{i=1}^N \mathbf{X}_i = \begin{pmatrix} \overline{T}_N \\ \overline{\left(\frac{1}{T}\right)}_N \end{pmatrix}
+$$
+
+Estimatorul nostru pentru raportul Kantorovich este produsul
+componentelor acestui vector: $$
+\hat{R}_N = \overline{T}_N \cdot \overline{\left(\frac{1}{T}\right)}_N
+$$
+
+*1. Convergența în probabilitate (*$\xrightarrow{\mathbb{P}}$)
+
+Argumentul se desfășoară în doi pași riguroși:
+
+*Pasul 1: Aplicarea Legii Slabe a Numerelor Mari (LSNM)* Conform WLLN
+aplicată vectorial, media de selecție converge în probabilitate către
+media teoretică: $$
+\mathbf{\overline{X}}_N \xrightarrow{\mathbb{P}} \boldsymbol{\mu}
+$$
+
+*Pasul 2: Aplicarea Teoremei Aplicațiilor Continue (TAC)* Considerăm
+funcția $g: \mathbb{R}^2 \to \mathbb{R}$, definită prin produsul
+componentelor, $g(x, y) = x \cdot y$. Această funcție este continuă pe
+tot domeniul său (și implicit în punctul $\boldsymbol{\mu}$).
+
+Conform Teoremei Aplicațiilor Continue (TAC), dacă
+$\mathbf{Z}_N \xrightarrow{\mathbb{P}} \mathbf{c}$, atunci
+$g(\mathbf{Z}_N) \xrightarrow{\mathbb{P}} g(\mathbf{c})$. Aplicând acest
+rezultat pentru $\mathbf{Z}_N = \mathbf{\overline{X}}_N$:
+
+$$
+g(\mathbf{\overline{X}}_N) \xrightarrow{\mathbb{P}} g(\boldsymbol{\mu})
+$$
+
+Înlocuind cu expresiile specifice problemei noastre, obținem convergența
+estimatorului către valoarea teoretică $R$:
+
+$$
+\underbrace{\overline{T}N \cdot \overline{\left(\frac{1}{T}\right)}_N}{\hat{R}N} \xrightarrow{\mathbb{P}} \underbrace{\mathbb{E}[T] \cdot \mathbb{E}\left[\frac{1}{T}\right]}{R}
+$$
+
+*2. Convergența în distribuție (*$\xrightarrow{d}$)
+
+Deoarece am demonstrat că $\hat{R}_N \xrightarrow{\mathbb{P}} R$ (unde
+$R$ este o constantă), rezultă imediat, conform proprietăților standard
+de convergență, că are loc și convergența în distribuție: $$
+\hat{R}_N \xrightarrow{d} R
+$$
+
+Aceasta explică rezultatele obținute prin simulare: pe măsură ce $N$
+crește, distribuția valorilor empirice $\hat{R}_N$ se concentrează
+(degenerează) în punctul $R$.
+
+```{r}
+N <- 10^6
+T_observat <- replicate(N,{
+  u <- runif(1)
+  t <- F_inversa(u,T_pmf_nou)
+  t
+})
+T_empiric <- mean(T_observat)
+T_invers_empiric <- mean(1/T_observat)
+
+R_N_empiric <-T_empiric*T_invers_empiric
+R_N_teoretic <- T_media_teoretica * T_invers_media_teoretica
+
+rezultat <- data.frame(
+  N = N,
+  R_N_empiric = R_N_empiric,
+  R_N_teoretic =R_N_teoretic,
+  Eroare_absoluta=abs(R_N_empiric - R_N_teoretic)
+)
+rezultat
+```
+
+### 2.3
+
+**Explicatie 2.3:** Deși inegalitatea Kantorovich
+($E[T]E[1/T] \leq \frac{(m+M)^2}{4mM}$) este o proprietate algebrică și
+teoretic ar trebui să fie respectată de orice eșantion cu valori în
+$[m, M]$, pentru $N$ mic pot apărea "încălcări" sau anomalii aparente
+din două motive:
+
+1.  **Volatilitatea Estimatorului (Zgomot statistic):** Pentru $N$ mic
+    (ex: $N = 100$), estimatorii mediei $\hat{\mathbb{E}}_N(T)$ au o
+    varianță foarte mare. Legea numerelor mari nu a stabilizat încă
+    rezultatul. Deși produsul mediilor de eșantionare nu va depăși
+    teoretic limita $B$ (dacă calculăm $B$ cu $m, M$ globale), el poate
+    fi foarte departe de valoarea reală a lui $R$ (a populației), creând
+    o imagine distorsionată a convergenței.
+
+2.  **Erori Numerice (Floating Point):** Calculatoarele au o precizie
+    finită. Când lucrăm cu numere foarte mici sau foarte mari și facem
+    multe operații (sume, împărțiri), erorile de rotunjire se pot
+    acumula, ducând la situații rare unde o inegalitate strictă
+    matematic (ex: $A/H \leq B$) poate fi încălcată la a 15-a zecimală.
+
+------------------------------------------------------------------------
+
+## Exercițiul 3
+
+```{r}
+# 0. Setări inițiale (Contextul problemei)
+m <- 2
+M <- 7
+B <- (m + M)^2 / (4 * m * M)  # Limita Kantorovich teoretică
+cat("Limita Teoretică Kantorovich (B) este:", B, "\n\n")
+
+# Număr mare de simulări pentru precizie
+N_sim <- 10^5 
+
+# Funcție pentru calculul estimatorilor și afișare
+calculeaza_si_afiseaza <- function(nume_distributie, esantion_T) {
+  # 3.2 Estimare A, H și Raportul A/H
+  A_est <- mean(esantion_T)               # Media Aritmetică
+  H_est <- 1 / mean(1 / esantion_T)       # Media Armonică
+  Raport <- A_est / H_est
+  
+  # Verificare cu limita teoretică
+  Diferenta <- B - Raport
+  
+  # Returnăm un rând pentru tabelul final
+  return(data.frame(
+    Distributie = nume_distributie,
+    Media_Aritmetica = A_est,
+    Media_Armonica = H_est,
+    Raport_AH = Raport,
+    Limita_Teoretica = B,
+    Respecta_Inegalitatea = (Raport <= B + 0.001) # Toleranță mică pt erori numerice
+  ))
+}
+
+# --- 3.1 Construcția celor 4 distribuții pe [m, M] ---
+
+# 1. Distribuția Uniformă (Heterogenitate medie)
+T_uniform <- runif(N_sim, m, M)
+
+# 2. Distribuția Beta Simetrică (Rescalată pe [m, M])
+# Parametrii alpha=beta=5 generează un "clopot" la mijloc.
+# Valorile sunt concentrate în centru -> A și H vor fi apropiate.
+T_beta_simetric <- m + (M - m) * rbeta(N_sim, 5, 5)
+
+# 3. Distribuția Beta Asimetrică (Rescalată)
+# Concentrare spre unul din capete.
+T_beta_skew <- m + (M - m) * rbeta(N_sim, 2, 5)
+
+# 4. Distribuția Bimodală (Amestec de două Uniforme la capete)
+# Acesta este cazul extrem care testează limita.
+# 50% din valori sunt foarte aproape de m, 50% foarte aproape de M.
+u <- runif(N_sim)
+epsilon <- 0.01 # interval foarte mic la capete
+T_bimodal <- ifelse(u < 0.5, 
+                    runif(N_sim, m, m + epsilon), 
+                    runif(N_sim, M - epsilon, M))
+
+# --- Centralizarea Rezultatelor ---
+
+rezultate <- data.frame()
+rezultate <- rbind(rezultate, calculeaza_si_afiseaza("Uniforma", T_uniform))
+rezultate <- rbind(rezultate, calculeaza_si_afiseaza("Beta Simetric", T_beta_simetric))
+rezultate <- rbind(rezultate, calculeaza_si_afiseaza("Beta Asimetric", T_beta_skew))
+rezultate <- rbind(rezultate, calculeaza_si_afiseaza("Bimodala (Extreme)", T_bimodal))
+
+# Afișarea tabelului final pentru 3.3 (Verificare numerică)
+print(rezultate)
+
+# Ilustrare grafică a diferențelor de distribuție (Opțional dar recomandat)
+par(mfrow=c(2,2)) #afiseaza histogramele in acelasi plot
+hist(T_uniform, main="Uniforma", xlim=c(m,M), col="lightblue", probability = T, xlab="T")
+hist(T_beta_simetric, main="Beta Simetric", xlim=c(m,M), col="lightgreen", probability = T, xlab="T")
+hist(T_beta_skew, main="Beta Asimetric", xlim=c(m,M), col="orange", probability = T, xlab="T")
+hist(T_bimodal, main="Bimodala (Maxim Heterogena)", xlim=c(m,M), col="salmon", probability = T, xlab="T")
+par(mfrow=c(1,1))
+```
+
+### 3.3
+
+Din rezultatele numerice observăm că, deși toate distribuțiile respectă limita superioară B, 
+raportul A/H diferă semnificativ
+
+Cea mai mică valoare a raportului (cea mai apropiată de 1) apare la Beta Simetric.
+Motivul: Valorile sunt concentrate în jurul mediei intervalului. Când varianța este mică, media aritmetică este aproape egală cu cea armonică. 
+Heterogenitatea este minimă.
+
+Cea mai mare valoare a raportului (cea mai apropiată de limita B) apare la Distribuția Bimodală. Motivul: Aceasta reprezintă "heterogenitate maximă". 
+Masa probabilistă este divizată între valorile minime posibile (m) și maxime posibile (M). 
+Acest caz maximizează diferența dintre E[T] și 1/E[1/T], fiind scenariul pentru care inegalitatea Kantorovich atinge egalitatea.
+
+### 3.4
+
+Inegalitatea Kantorovich măsoară distanța maximă dintre curba funcției 1/t și coarda care unește punctele (m,1/m) și (M,1/M).
+
+Deoarece funcția 1/t este strict convexă pe [m,M], această coardă (care corespunde mediei aritmetice a extremelor) se află întotdeauna deasupra curbei (care corespunde mediei armonice).
+
+Punctul maxim al acestei distanțe este determinat strict de capetele intervalului m și M. Indiferent cum distribuim probabilitățile în interiorul intervalului [m,M], nu putem "împinge" raportul mai sus decât o facem punând toată greutatea în capete.
+
+Astfel (B+b)^/4mM este o proprietate a intervalului, nu a modului în care variabila aleatoare se plimbă în interiorul acestuia.
+
+
+------------------------------------------------------------------------
+
+# Capitolul 2 -- Familia exponențială, estimare și acuratețea aproximării normale (Berry-Esseen)
+
+## Exercițiul 4 (a. și b.)
+
+### Distribuția Binomială
+
+$X \sim \text{Bin}(m, p), \quad m \in \mathbb{N}, \quad p \in (0,1)$.
+\textcolor{red}{($p=0 \lor p=1$ neinteresant TRIVIAL)}
+
+$$
+P(X=k) = C_m^k p^k (1-p)^{m-k}, \quad \forall k \in \mathbb{N}.
+$$ $$
+\theta = p
+$$
+
+Forma densității: $$
+f_X(x; p) = C_m^x p^x (1-p)^{m-x}, \quad x \in \{0, \dots, m\}
+$$
+
+$$
+\xrightarrow{\text{VREAU}} \quad \underbrace{h(x)}_{>0} \exp\left[ \eta_1(p) T_1(x) - A(p) \right]
+$$
+
+Analiza componentelor: 1.
+$h(x) = C_m^x > 0, \quad \forall x \in \{0, \dots, m\}$ 2. Prelucrarea
+exponențială: $$
+   p^x \xrightarrow{p>0} e^{\ln(p^x)} = e^{x \ln p} = \exp(x \ln p)
+   $$ $$
+   (1-p)^{m-x} \xrightarrow{p<1} e^{\ln((1-p)^{m-x})} = e^{(m-x)\ln(1-p)} = \exp((m-x)\ln(1-p))
+   $$
+
+Combinarea termenilor în exponent: $$
+\begin{aligned}
+\exp(x \ln p + (m-x)\ln(1-p)) &= \exp(x(\ln p - \ln(1-p)) + m \ln(1-p)) \\
+&= \exp\left[ x \ln \frac{p}{1-p} + m \ln(1-p) \right]
+\end{aligned}
+$$
+
+Identificarea parametrilor familiei exponențiale: $$
+\eta_1(\theta) = \ln \frac{p}{1-p}, \quad T_1(x) = x, \quad A(\theta) = -m \ln(1-p)
+$$
+
+------------------------------------------------------------------------
+
+**Demonstrație 1:** $T_1(x) = x$ statistică suficientă (prin definiție)
+
+Calculăm probabilitatea condiționată: $$
+P(X=x | T_1=t) = \frac{P(\{X=x\} \cap \{T_1=t\})}{P(T_1=t)}
+$$
+
+Cazuri: $$
+= \begin{cases}
+\frac{P(X=t)}{P(T_1=t)} = \frac{C_m^t p^t (1-p)^{m-t}}{C_m^t p^t (1-p)^{m-t}} = 1, & \text{dacă } x = t \quad (\text{nu depinde de } p) \\
+0, & \text{dacă } x \neq t \quad (\text{nu depinde de } p)
+\end{cases}
+$$
+
+------------------------------------------------------------------------
+
+**Demonstrație 2: Factorizare Fisher-Neyman**
+
+Rescriem funcția finală: $$
+f_X(x; p) = h(x) \cdot g(\underbrace{T(x)}_{x}, \theta) = C_m^x \exp\left[ \ln\frac{p}{1-p} \cdot x - (-m \ln(1-p)) \right]
+$$
+
+Unde componenta dependentă de parametru este: $$
+g(x, p) = e^{x \ln \frac{p}{1-p} - m \ln(1-p)}
+$$
+
+$\leftarrow$ Factorizare Fisher-Neyman.
+
+Deci $T_1(x) = x$ este statistică suficientă.
+
+```{r ex4b-binom, fig.cap="", fig.height=4.5}
+# 1. Definirea domeniului de valori
+# Luăm x până la maximul n-ului pe care îl vom folosi (aici 20)
+x <- 0:20 
+
+# 2. Definirea celor 4 seturi de parametri
+# Set 1: Simetric
+n1 <- 20; p1 <- 0.5 
+# Set 2: Asimetric dreapta
+n2 <- 20; p2 <- 0.2 
+# Set 3: Asimetric stanga
+n3 <- 20; p3 <- 0.8 
+# Set 4: n mai mic
+n4 <- 10; p4 <- 0.5 
+
+# Calculăm probabilitățile pentru fiecare
+y1 <- dbinom(x, size = n1, prob = p1)
+y2 <- dbinom(x, size = n2, prob = p2)
+y3 <- dbinom(x, size = n3, prob = p3)
+y4 <- dbinom(x, size = n4, prob = p4)
+
+# 3. Pregătirea graficului
+y_max <- max(y1, y2, y3, y4)
+
+plot(x, y1, type = "n", 
+     ylim = c(0, y_max + 0.05),
+     xlim = c(0, 20),
+     main = "Comparatie: 4 Repartitii Binomiale",
+     xlab = "Numar de succese (x)",
+     ylab = "Probabilitate P(X=x)",
+     las = 1)
+
+grid(nx = NULL, ny = NULL, col = "lightgray", lty = "dotted")
+
+# 4. Serii de date (offset-uri mici ca sa nu se suprapuna)
+off1 <- -0.15
+segments(x + off1, 0, x + off1, y1, col = "blue", lwd = 2)
+points(x + off1, y1, pch = 19, col = "blue", cex = 1)
+
+off2 <- -0.05
+segments(x + off2, 0, x + off2, y2, col = "red", lwd = 2)
+points(x + off2, y2, pch = 19, col = "red", cex = 1)
+
+off3 <- 0.05
+segments(x + off3, 0, x + off3, y3, col = "darkgreen", lwd = 2)
+points(x + off3, y3, pch = 19, col = "darkgreen", cex = 1)
+
+off4 <- 0.15
+segments(x + off4, 0, x + off4, y4, col = "purple", lwd = 2)
+points(x + off4, y4, pch = 19, col = "purple", cex = 1)
+
+# 5. Legenda
+legend("top", 
+       legend = c(
+         paste0("n=", n1, ", p=", p1, " (Simetric)"),
+         paste0("n=", n2, ", p=", p2, " (Asimetric Dr.)"),
+         paste0("n=", n3, ", p=", p3, " (Asimetric St.)"),
+         paste0("n=", n4, ", p=", p4, " (n mic)")
+       ),
+       col = c("blue", "red", "darkgreen", "purple"),
+       pch = 19,
+       lwd = 2,
+       bty = "n",
+       cex = 0.8)
+```
+
+------------------------------------------------------------------------
+
+### Distribuția Geometrică
+
+Fie $X \sim \text{Geom}(p), \quad p \in (0,1)$
+
+$$
+P(X=k) = p(1-p)^{k-1}, \quad k \in \{1, \dots\}, \quad \theta = p
+$$
+
+Forma densității și obiectivul: $$
+f_X(x; p) = p(1-p)^{x-1} \quad \xrightarrow{\text{VREAU}} \quad \underbrace{h(x)}_{\equiv 1 > 0} \cdot \exp\left[\eta_1(p) T_1(x) - A(p)\right]
+$$
+
+Transformarea exponențială: $$
+p(1-p)^{x-1} = \exp\left[ \underbrace{\ln p}_{-A(p)} + \underbrace{(x-1)}_{T_1(x)} \underbrace{\ln(1-p)}_{\eta_1(p)} \right]
+$$
+
+Întrebare: E $T_1(x) = x-1$ statistică suficientă?
+
+Verificare prin factorizare: $$
+T_1(x) = x-1 \text{ statistică suficientă}
+$$
+
+$$
+f_X(x; p) = \underbrace{h(x)}_{\equiv 1} \cdot g(T(x), p) = 1 \cdot e^{\underbrace{(x-1)}_{T(x)} \ln(1-p) + \ln p}
+$$
+
+Deci $T_1$ st. suf. (Statistică suficientă). Deci $X$ e in clasa exp.
+(Familia Exponențială).
+
+------------------------------------------------------------------------
+
+```{r ex4b-geom, fig.cap="", fig.height=4.5}
+
+# 1. Domeniu (geometrica are coada infinita, ne oprim la 15)
+x <- 0:15 
+
+# 2. Parametri (p)
+p1 <- 0.8 
+p2 <- 0.5 
+p3 <- 0.25 
+p4 <- 0.1 
+
+# PMF
+y1 <- dgeom(x, prob = p1)
+y2 <- dgeom(x, prob = p2)
+y3 <- dgeom(x, prob = p3)
+y4 <- dgeom(x, prob = p4)
+
+# 3. Pregatirea graficului
+y_max <- max(y1, y2, y3, y4)
+
+plot(x, y1, type = "n", 
+     ylim = c(0, y_max + 0.05),
+     xlim = c(0, 15),
+     main = "Comparatie: 4 Repartitii Geometrice",
+     xlab = "Numar de esecuri pana la succes (x)",
+     ylab = "Probabilitate P(X=x)",
+     las = 1)
+
+grid(nx = NULL, ny = NULL, col = "lightgray", lty = "dotted")
+
+# 4. Serii (cu offset)
+off1 <- -0.15
+segments(x + off1, 0, x + off1, y1, col = "blue", lwd = 2)
+points(x + off1, y1, pch = 19, col = "blue", cex = 1)
+
+off2 <- -0.05
+segments(x + off2, 0, x + off2, y2, col = "red", lwd = 2)
+points(x + off2, y2, pch = 19, col = "red", cex = 1)
+
+off3 <- 0.05
+segments(x + off3, 0, x + off3, y3, col = "darkgreen", lwd = 2)
+points(x + off3, y3, pch = 19, col = "darkgreen", cex = 1)
+
+off4 <- 0.15
+segments(x + off4, 0, x + off4, y4, col = "purple", lwd = 2)
+points(x + off4, y4, pch = 19, col = "purple", cex = 1)
+
+# 5. Legenda
+legend("topright", 
+       legend = c(
+         paste0("p=", p1, " (Succes rapid)"),
+         paste0("p=", p2, " (Moderat)"),
+         paste0("p=", p3, " (Succes rar)"),
+         paste0("p=", p4, " (Succes foarte rar)")
+       ),
+       col = c("blue", "red", "darkgreen", "purple"),
+       pch = 19, 
+       lwd = 2,
+       bg = "white",
+       cex = 0.9)
+```
+
+------------------------------------------------------------------------
+
+### Distribuția Poisson
+
+$X \sim \text{Poisson}(\lambda), \quad \lambda \in (0, \infty)$
+
+$$
+P(X=k) = \frac{\lambda^k e^{-\lambda}}{k!}, \quad k \in \mathbb{N}
+$$
+
+Scrierea sub formă de familie exponențială: $$
+f_X(x, \lambda) = \frac{1}{x!} \cdot \lambda^x \cdot e^{-\lambda} \quad \xrightarrow{\text{VREM}} \quad \underbrace{h(x)}_{\substack{|| \\ \frac{1}{x!} > 0}} \cdot \exp\left[\eta_1(\lambda) \cdot T_1(x) - A(\lambda)\right]
+$$
+
+Transformarea termenilor dependenți de parametru: $$
+\lambda^x \cdot e^{-\lambda} = e^{\ln(\lambda^x e^{-\lambda})} = e^{\underbrace{x \ln \lambda}_{T_1(x) \cdot \eta_1(\lambda)} \underbrace{- \lambda}_{-A(\lambda)}}
+$$
+
+Identificarea componentelor (din zonele evidențiate): $$
+\eta_1(\lambda) = \ln \lambda, \quad T_1(x) = x, \quad A(\lambda) = \lambda
+$$
+
+Reconstituirea funcției: $$
+\text{Deci } f_X(x, \lambda) = h(x) \cdot g(T_1(x), \lambda) = \frac{1}{x!} \cdot e^{x \ln \lambda - \lambda}
+$$
+
+Concluzii: $$
+\text{Deci } T_1 \text{ st. suf. (Statistică suficientă).}
+$$ $$
+\text{Deci } X \text{ în cls. exp. (Clasa Exponențială).}
+$$ ---
+
+```{r ex4b-poisson, fig.cap="", fig.height=4.5}
+x <- 0:35 
+
+lam1 <- 1
+lam2 <- 4
+lam3 <- 10
+lam4 <- 20
+
+y1 <- dpois(x, lambda = lam1)
+y2 <- dpois(x, lambda = lam2)
+y3 <- dpois(x, lambda = lam3)
+y4 <- dpois(x, lambda = lam4)
+
+y_max <- max(y1, y2, y3, y4)
+
+plot(x, y1, type = "n", 
+     ylim = c(0, y_max + 0.02),
+     xlim = c(0, 35),
+     main = "Comparatie: 4 Repartitii Poisson",
+     xlab = "Numar de evenimente (k)",
+     ylab = "Probabilitate P(X=k)",
+     las = 1)
+
+grid(nx = NULL, ny = NULL, col = "lightgray", lty = "dotted")
+
+off1 <- -0.15
+segments(x + off1, 0, x + off1, y1, col = "blue", lwd = 2)
+points(x + off1, y1, pch = 19, col = "blue", cex = 1)
+
+off2 <- -0.05
+segments(x + off2, 0, x + off2, y2, col = "red", lwd = 2)
+points(x + off2, y2, pch = 19, col = "red", cex = 1)
+
+off3 <- 0.05
+segments(x + off3, 0, x + off3, y3, col = "darkgreen", lwd = 2)
+points(x + off3, y3, pch = 19, col = "darkgreen", cex = 1)
+
+off4 <- 0.15
+segments(x + off4, 0, x + off4, y4, col = "purple", lwd = 2)
+points(x + off4, y4, pch = 19, col = "purple", cex = 1)
+
+legend("topright", 
+       legend = c(
+         paste0("lambda=", lam1, " (Rar)"),
+         paste0("lambda=", lam2, " (Moderat)"),
+         paste0("lambda=", lam3, " (Frecvent)"),
+         paste0("lambda=", lam4, " (Foarte frecvent)")
+       ),
+       col = c("blue", "red", "darkgreen", "purple"),
+       pch = 19, 
+       lwd = 2,
+       bg = "white",
+       cex = 0.9)
+```
+
+------------------------------------------------------------------------
+
+### Distribuția Exponențială
+
+$X \sim \text{Exp}(\lambda), \quad \lambda \in (0, \infty)$
+
+$$
+P(X=x) = \lambda e^{-\lambda x}, \quad x \in [0, \infty)
+$$
+
+$$
+f_X(x, \lambda) = \lambda e^{-\lambda x} \quad \xrightarrow{\text{VREAU}} \quad \underbrace{h(x)}_{=1} \cdot \exp\left[\eta_1(\lambda) T_1(x) - A(\lambda)\right]
+$$
+
+Transformarea parametrilor:
+
+$$
+\lambda = e^{\ln \lambda} \implies \lambda e^{-\lambda x} = e^{-\lambda x + \ln \lambda}
+$$
+
+Identificarea termenilor:
+
+$$
+\eta_1(\lambda) = -\lambda, \quad T_1(x) = x, \quad A(\lambda) \approx \ln \lambda
+$$
+
+Deci, rescrierea finală:
+
+$$
+f_X(x, \lambda) = h(x) \cdot g(T(x), \lambda) = 1 \cdot e^{-\lambda \underbrace{x}_{T_1(x)} + \ln \lambda} \implies T_1 \text{ st. suf.}
+$$
+
+Deci $X$ in cls. exp. (Clasa Exponențială).
+
+------------------------------------------------------------------------
+
+```{r ex4b-exp, fig.cap="", fig.height=4.5}
+x <- seq(0, 6, length.out = 1000)
+
+lam1 <- 0.5 
+lam2 <- 1.0 
+lam3 <- 2.0 
+lam4 <- 4.0 
+
+y1 <- dexp(x, rate = lam1)
+y2 <- dexp(x, rate = lam2)
+y3 <- dexp(x, rate = lam3)
+y4 <- dexp(x, rate = lam4)
+
+y_max <- max(lam1, lam2, lam3, lam4)
+
+plot(x, y1, type = "n", 
+     ylim = c(0, y_max),
+     xlim = c(0, 6),
+     main = "Comparatie: 4 Repartitii Exponentiale",
+     xlab = "x (Timp / Distanta)",
+     ylab = "Densitate f(x)",
+     las = 1)
+
+grid(nx = NULL, ny = NULL, col = "lightgray", lty = "dotted")
+
+lines(x, y1, col = "blue", lwd = 3)
+lines(x, y2, col = "red", lwd = 3)
+lines(x, y3, col = "darkgreen", lwd = 3)
+lines(x, y4, col = "purple", lwd = 3)
+
+legend("topright", 
+       legend = c(
+         paste0("lambda=", lam1, " (Scadere lenta)"),
+         paste0("lambda=", lam2, " (Moderat)"),
+         paste0("lambda=", lam3, " (Rapid)"),
+         paste0("lambda=", lam4, " (Abrupt)")
+       ),
+       col = c("blue", "red", "darkgreen", "purple"),
+       lty = 1,
+       lwd = 3,
+       bg = "white",
+       cex = 0.9)
+
+```
+
+------------------------------------------------------------------------
+
+### Distribuția Gamma 
+
+$X \sim \text{Gamma}(\alpha, \beta), \quad \alpha, \beta \in (0, \infty)$
+
+$$
+f_X(x; \alpha, \beta) = \frac{\beta^\alpha}{\Gamma(\alpha)} \cdot x^{\alpha-1} \cdot e^{-\beta x}, \quad x \in (0, \infty), \quad \theta = (\alpha, \beta).
+$$
+
+(Notă: $\Gamma(\alpha) = \int_0^\infty t^{\alpha-1} e^{-t} dt$)
+
+Obiectivul ("VREM"): $$
+f_X(x; \alpha, \beta) = \underbrace{h(x)}_{\equiv 1} \cdot \exp\left[ \sum_{i=1}^2 (\eta_i(\theta) T_i(x) - A(\theta)) \right], \quad \forall x \in (0, \infty).
+$$
+
+Pentru $\alpha > 0, \Gamma(\alpha) > 0$, pot lua $\ln$. Transformarea în
+exponent:
+
+$$
+e^{\ln\left( \frac{\beta^\alpha}{\Gamma(\alpha)} \cdot x^{\alpha-1} \right)} e^{-\beta x} = e^{ \underbrace{\alpha \ln \beta - \ln \Gamma(\alpha)}_{-A(\theta)} + \underbrace{(\alpha-1)}_{\eta_1(\theta)} \underbrace{\ln x}_{T_1(x)} \underbrace{- \beta}_{\eta_2(\theta)} \underbrace{x}_{T_2(x)} }
+$$
+
+Identificare Statistici Suficiente: $$
+T_1(x) = \ln x \quad \text{și} \quad T_2(x) = x \quad \text{sunt st. suf.?}
+$$
+
+Verificare prin factorizare: $$
+f_X(x; \alpha, \beta) = \underbrace{h(x)}_{\equiv 1} \cdot g(T_1(x), T_2(x), \theta)
+$$
+
+$$
+= \exp\left( (\alpha-1)\underbrace{\ln x}_{T_1(x)} - \beta \underbrace{x}_{T_2(x)} + \alpha \ln \beta - \ln \Gamma(\alpha) \right) \implies T_1, T_2 \text{ st. suf.}
+$$
+
+Sau revenind la forma inițială pentru verificare: $$
+= \underbrace{e^{-\beta x + \alpha \ln \beta - \ln \Gamma(\alpha)}}_{g_2(T_2, \theta)} \cdot \underbrace{e^{(\alpha-1)\ln x}}_{(x^{\alpha-1}) = g_1(T_1, \theta)}
+$$
+
+Deci Gamma în cls. exp. (Clasa Exponențială).
+
+------------------------------------------------------------------------
+
+```{r ex4b-gamma, fig.cap="", fig.height=4.5}
+x <- seq(0, 20, length.out = 1000)
+
+shape1 <- 1; rate1 <- 1
+shape2 <- 2; rate2 <- 1
+shape3 <- 5; rate3 <- 1
+shape4 <- 9; rate4 <- 2
+
+y1 <- dgamma(x, shape = shape1, rate = rate1)
+y2 <- dgamma(x, shape = shape2, rate = rate2)
+y3 <- dgamma(x, shape = shape3, rate = rate3)
+y4 <- dgamma(x, shape = shape4, rate = rate4)
+
+y_max <- max(y1, y2, y3, y4)
+
+plot(x, y1, type = "n", 
+     ylim = c(0, y_max),
+     xlim = c(0, 15),
+     main = "Comparatie: 4 Repartitii Gamma",
+     xlab = "x",
+     ylab = "Densitate f(x)",
+     las = 1)
+
+grid(nx = NULL, ny = NULL, col = "lightgray", lty = "dotted")
+
+lines(x, y1, col = "blue", lwd = 3)
+lines(x, y2, col = "red", lwd = 3)
+lines(x, y3, col = "darkgreen", lwd = 3)
+lines(x, y4, col = "purple", lwd = 3)
+
+legend("topright", 
+       legend = c(
+         paste0("Shape=", shape1, ", Rate=", rate1, " (Exp)"),
+         paste0("Shape=", shape2, ", Rate=", rate2, " (Skewed)"),
+         paste0("Shape=", shape3, ", Rate=", rate3, " (Wide Bell)"),
+         paste0("Shape=", shape4, ", Rate=", rate4, " (Tight Bell)")
+       ),
+       col = c("blue", "red", "darkgreen", "purple"),
+       lty = 1, 
+       lwd = 3,
+       bg = "white",
+       cex = 0.85)
+
+```
+
+------------------------------------------------------------------------
+
+### Distribuția Beta
+
+$X \sim \text{Beta}(\alpha, \beta), \quad \alpha, \beta \in (0, \infty)$
+
+$$
+P(X=x) = \frac{1}{B(\alpha, \beta)} \cdot x^{\alpha-1} \cdot (1-x)^{\beta-1}, \quad x \in (0, 1), \quad \theta = (\alpha, \beta)
+$$
+
+Notație: $$
+B(\alpha, \beta) = \frac{\Gamma(\alpha)\Gamma(\beta)}{\Gamma(\alpha+\beta)} > 0
+$$
+
+Obiectivul ("VREAU"): $$
+f_X(x; \alpha, \beta) \xrightarrow{\text{VREAU}} \underbrace{h(x)}_{\equiv 1} \cdot \exp\left( \sum_{i=1}^2 \eta_i(\theta) T_i(x) - A(\theta) \right)
+$$
+
+Transformarea exponențială: $$
+e^{\ln\left( \frac{1}{B(\alpha, \beta)} \cdot x^{\alpha-1} \cdot (1-x)^{\beta-1} \right)} = e^{ \underbrace{-\ln B(\alpha, \beta)}_{A(\theta)} + \underbrace{(\alpha-1)}_{\eta_1(\theta)} \underbrace{\ln x}_{T_1(x)} + \underbrace{(\beta-1)}_{\eta_2(\theta)} \underbrace{\ln(1-x)}_{T_2(x)} }
+$$
+
+Încercare de verificare pentru $T_1$: $$
+T_1(x) = \ln x \text{ st. suf.?}
+$$ $$
+f_X(x, \alpha, \beta) = \underbrace{h(x)}_{\equiv 1} \cdot g(T_1(x), \theta) = e^{ A(\theta) + (\alpha-1)\underbrace{\ln x}_{T_1(x)} + (\beta-1)\ln(1 - e^{\underbrace{\ln x}_{T_1(x)}}) } 
+$$
+
+Observație pentru $T_2$: $$
+T_2(x) = \ln(1-x)
+$$ $$
+f_X(x, (\alpha, \beta)) = h(T_2(x), \theta) = e^{ A(\theta) + (\beta-1)\underbrace{\ln(1-x)}_{T_2(x)} + (\alpha-1)\ln x } 
+$$ **Formalizare:** Densitatea se scrie sub forma canonică a familiei
+exponențiale de ordin 2:
+
+$$
+f_X(x) = h(x) \exp \left( \eta^T \cdot \mathbf{T}(x) - A(\eta) \right)
+$$
+
+Unde vectorul statisticilor suficiente este
+$\mathbf{T}(x) = (\ln x, \ln(1 - x))$.
+
+**Verificare prin Factorizare Fisher-Neyman:** Funcția poate fi
+descompusă în:
+
+$$
+h(x) = 1
+$$
+
+$$
+g(T(x), \theta) = \frac{1}{B(\alpha, \beta)} e^{(\alpha-1) \ln x + (\beta-1) \ln(1-x)}
+$$
+
+Deoarece $g$ depinde de date ($x$) doar prin intermediul vectorului
+$(\ln x, \ln(1 - x))$, rezultă că $T(x) = (\ln x, \ln(1 - x))$ sunt
+**statistici suficiente comune** pentru parametrii $(\alpha, \beta)$.
+
+**Concluzie:** Distribuția Beta aparține Familiei Exponențiale.
+
+------------------------------------------------------------------------
+
+```{r ex4b-beta, fig.cap="", fig.height=4.5}
+x <- seq(0.005, 0.995, length.out = 1000)
+
+a1 <- 2; b1 <- 2
+a2 <- 2; b2 <- 5
+a3 <- 5; b3 <- 1
+a4 <- 0.5; b4 <- 0.5
+
+y1 <- dbeta(x, shape1 = a1, shape2 = b1)
+y2 <- dbeta(x, shape1 = a2, shape2 = b2)
+y3 <- dbeta(x, shape1 = a3, shape2 = b3)
+y4 <- dbeta(x, shape1 = a4, shape2 = b4)
+
+plot(x, y1, type = "n", 
+     ylim = c(0, 4), 
+     xlim = c(0, 1),
+     main = "Comparatie: 4 Repartitii Beta",
+     xlab = "x (Proportie / Probabilitate)",
+     ylab = "Densitate f(x)",
+     las = 1)
+
+grid(nx = NULL, ny = NULL, col = "lightgray", lty = "dotted")
+
+lines(x, y1, col = "blue", lwd = 3)
+lines(x, y2, col = "red", lwd = 3)
+lines(x, y3, col = "darkgreen", lwd = 3)
+lines(x, y4, col = "purple", lwd = 3)
+
+legend("top", 
+       legend = c(
+         paste0("a=", a1, ", b=", b1, " (Simetric)"),
+         paste0("a=", a2, ", b=", b2, " (Asimetric Dr.)"),
+         paste0("a=", a3, ", b=", b3, " (Crescator)"),
+         paste0("a=", a4, ", b=", b4, " (U-Shape)")
+       ),
+       col = c("blue", "red", "darkgreen", "purple"),
+       lty = 1, 
+       lwd = 3,
+       bg = "white",
+       ncol = 2,
+       cex = 0.85)
+
+```
+
+------------------------------------------------------------------------
+
+### Distribuția Uniformă
+
+$X \sim \text{Unif}(a, b), \quad -\infty < a < b < +\infty$
+
+$$
+P(X=x) = \frac{1}{b-a} \cdot \mathbb{1}_{(a, b)}(x), \quad \forall x \in \mathbb{R}.
+$$
+
+Parametrii: $$
+\theta = (a, b)
+$$
+
+Încercare de scriere în forma exponențială: $$
+f_X(x; (a, b)) \stackrel{\text{VREAU}}{=} \underbrace{h(x)}_{= \frac{1}{b-a}} \cdot \exp\left[ \sum_{i=1}^2 \eta_i(\theta) T_i(x) - A(\theta) \right]
+$$
+
+Problema (zona încercuită): $$
+\mathbb{1}_{(a, b)}(x) = \exp\left[ \sum_{i=1}^2 \eta_i(\theta) T_i(x) - A(\theta) \right]
+$$
+
+Analiza suportului (diagrama de jos): $$
+\text{supp} = [a, b] \quad \text{(depinde de parametri)}
+$$ $$
+\text{fct. continuă} \quad \text{vs} \quad \text{supp} = \mathbb{R} \cup \{-\infty, +\infty\}
+$$
+
+------------------------------------------------------------------------
+
+```{r ex4b-unif, fig.cap="", fig.height=4.5}
+x <- seq(-1, 9, length.out = 5000)
+
+min1 <- 2; max1 <- 4
+min2 <- 5; max2 <- 6
+min3 <- 1; max3 <- 7
+min4 <- 0; max4 <- 2
+
+y1 <- dunif(x, min = min1, max = max1)
+y2 <- dunif(x, min = min2, max = max2)
+y3 <- dunif(x, min = min3, max = max3)
+y4 <- dunif(x, min = min4, max = max4)
+
+y_max <- max(y1, y2, y3, y4)
+
+plot(x, y1, type = "n", 
+     ylim = c(0, y_max + 0.1),
+     xlim = c(-0.5, 8),
+     main = "Comparatie: 4 Repartitii Uniforme",
+     xlab = "x",
+     ylab = "Densitate f(x)",
+     las = 1)
+
+grid(nx = NULL, ny = NULL, col = "lightgray", lty = "dotted")
+
+lines(x, y1, col = "blue", lwd = 2)
+lines(x, y2, col = "red", lwd = 2)
+lines(x, y3, col = "darkgreen", lwd = 2)
+lines(x, y4, col = "purple", lwd = 2)
+
+legend("topright", 
+       legend = c(
+         paste0("U[", min1, ", ", max1, "] (Standard)"),
+         paste0("U[", min2, ", ", max2, "] (Ingust/inalt)"),
+         paste0("U[", min3, ", ", max3, "] (Lat/scund)"),
+         paste0("U[", min4, ", ", max4, "] (Decalat)")
+       ),
+       col = c("blue", "red", "darkgreen", "purple"),
+       lty = 1, 
+       lwd = 2,
+       bg = "white",
+       cex = 0.85)
+
+```
+
+------------------------------------------------------------------------
+
+## Exercițiul 5
+
+### 5.a) Derivarea în raport cu parametrii $\theta$ și Demonstrarea Concavității
+
+Pentru a oferi o demonstrație riguroasă a concavității, vom considera **forma canonică** a familiei exponențiale. Presupunem că $\theta$ este vectorul parametrilor naturali (canonici), astfel încât densitatea se scrie:
+
+$$
+f_X(x; \theta) = h(x) \exp\left( \theta^\top T(x) - A(\theta) \right)
+$$
+
+Log-verosimilitatea pentru un eșantion i.i.d. $x_1, \dots, x_m$ este:
+
+$$
+l(\theta; \underline{x}) = \sum_{i=1}^m \ln h(x_i) + \theta^\top \left(\sum_{i=1}^m T(x_i)\right) - m A(\theta)
+$$
+
+Pentru a studia punctele de maxim, calculăm gradientul (vectorul scor) și matricea Hessiană în raport cu $\theta$.
+
+#### Pasul 1: Calculul Gradientului (Funcția Scor)
+
+Derivăm $l(\theta)$ în raport cu vectorul $\theta$:
+
+$$
+\nabla_\theta l(\theta) = \sum_{i=1}^m T(x_i) - m \nabla_\theta A(\theta)
+$$
+
+Pentru a evalua $\nabla A(\theta)$, folosim proprietatea că densitatea de probabilitate integrează la 1:
+$$
+\int f(x; \theta) dx = 1 \iff \int h(x) e^{\theta^\top T(x) - A(\theta)} dx = 1
+$$
+$$
+\iff e^{-A(\theta)} \int h(x) e^{\theta^\top T(x)} dx = 1 \iff A(\theta) = \ln \left( \int h(x) e^{\theta^\top T(x)} dx \right)
+$$
+
+Derivând identitatea $\int f(x; \theta) dx = 1$ în raport cu $\theta$ (sub semnul integralei, presupunând condiții de regularitate):
+
+$$
+\nabla_\theta \int h(x) e^{\theta^\top T(x) - A(\theta)} dx = 0
+$$
+$$
+\int h(x) e^{\theta^\top T(x) - A(\theta)} \cdot (T(x) - \nabla A(\theta)) dx = 0
+$$
+$$
+\int (T(x) - \nabla A(\theta)) f(x; \theta) dx = 0
+$$
+$$
+\mathbb{E}[T(X)] - \nabla A(\theta) = 0 \implies \boxed{\nabla A(\theta) = \mathbb{E}[T(X)]}
+$$
+
+Astfel, gradientul log-verosimilității devine:
+$$
+\nabla_\theta l(\theta) = \sum_{i=1}^m T(x_i) - m \mathbb{E}[T(X)]
+$$
+Egalând cu 0 pentru a găsi MLE, obținem intuiția Metoadei Momentelor: media empirică a statisticii suficiente trebuie să fie egală cu media teoretică.
+
+#### Pasul 2: Calculul Matricei Hessiene
+
+Derivăm din nou gradientul pentru a obține Hessianul $H(\theta)$:
+
+$$
+H(\theta) = \nabla^2_\theta l(\theta) = \frac{\partial}{\partial \theta^\top} \left( \sum_{i=1}^m T(x_i) - m \nabla A(\theta) \right)
+$$
+Deoarece primul termen nu depinde de $\theta$:
+$$
+H(\theta) = -m \nabla^2 A(\theta)
+$$
+
+Trebuie să calculăm $\nabla^2 A(\theta)$. Derivăm din nou relația $\mathbb{E}[T(X)] = \nabla A(\theta)$, sau mai exact, identitatea integrală anterioară:
+$$
+\nabla_\theta \int (T(x) - \nabla A(\theta)) f(x; \theta) dx = 0
+$$
+Aplicăm regula produsului:
+$$
+\int \left[ -\nabla^2 A(\theta) f(x;\theta) + (T(x) - \nabla A(\theta)) \cdot \underbrace{\nabla f(x;\theta)}_{(T(x) - \nabla A(\theta))f(x;\theta)} \right] dx = 0
+$$
+$$
+-\nabla^2 A(\theta) \underbrace{\int f(x;\theta) dx}_{1} + \int (T(x) - \nabla A(\theta))(T(x) - \nabla A(\theta))^\top f(x;\theta) dx = 0
+$$
+Termenul din dreapta este definiția matricei de covarianță a vectorului aleator $T(X)$, deoarece $\mathbb{E}[T(X)] = \nabla A(\theta)$.
+
+$$
+\nabla^2 A(\theta) = \text{VarCov}[T(X)]
+$$
+
+#### Pasul 3: Concluzia (Negativ Definirea)
+
+Am demonstrat că Hessianul log-verosimilității este:
+
+$$
+H(\theta) = -m \cdot \text{VarCov}[T(X)]
+$$
+
+Din algebră liniară, știm că **orice matrice de covarianță este pozitiv semi-definită** (adică $z^\top \Sigma z \geq 0, \forall z \neq 0$).
+
+Prin urmare, matricea $-m \cdot \text{VarCov}[T(X)]$ este **negativ semi-definită**.
+
+$$
+H(\theta) \preceq 0
+$$
+
+**Consecință:** Funcția de log-verosimilitate $l(\theta)$ este o funcție **concavă** pe tot domeniul parametrului natural. Aceasta garantează că:
+1.  Dacă există un punct critic (unde gradientul este 0), acesta este un **maxim global**.
+2.  Algoritmii de optimizare numerică (ex. Newton-Raphson) vor converge către soluția corectă (MLE unic, dacă Hessianul este strict negativ definit).
+
+------------------------------------------------------------------------
+
+### 5.b) Formele log-verosimilitate pentru distribuții specifice
+
+**1) Binomială**\
+$X \sim \text{Bin}(m, p), \quad m \in \mathbb{N}, \; p \in (0, 1)$
+
+$$
+l(\theta; \underline{x}) =
+\sum_{i=1}^{m}
+\left[
+\ln C_{m}^{x_{i}}
++ \ln \frac{p}{1-p} \cdot x_{i}
++ m \cdot \ln(1-p)
+\right]
+$$
+
+**2) Geometrică**\
+$X \sim \text{Geom}(p), \quad p \in (0, 1)$
+
+$$
+l(\theta; \underline{x}) =
+\sum_{i=1}^{m}
+\left[
+\ln(1-p) \cdot (x_{i} - 1)
++ \ln p
+\right]
+$$
+
+**3) Poisson**\
+$X \sim \text{Poisson}(\lambda), \quad \lambda \in (0, \infty)$
+
+$$
+l(\theta; \underline{x}) =
+\sum_{i=1}^{m}
+\left[
+\ln \frac{1}{x_{i}!}
++ \ln \lambda \cdot x_{i}
+- \lambda
+\right]
+$$
+
+**4) Exponențială**\
+$X \sim \text{Exp}(\lambda), \quad \lambda \in (0, +\infty)$
+
+$$
+l(\theta; \underline{x}) =
+\sum_{i=1}^{m} (-\lambda \cdot x_{i} + \ln \lambda)
+$$
+
+**5) Gamma**\
+$X \sim \text{Gamma}(\alpha, \beta), \quad \alpha, \beta \in (0, +\infty)$
+
+$$
+l(\theta; \underline{x}) =
+\sum_{i=1}^{m}
+\left[
+(\alpha - 1) \ln x_{i}
+- \beta x_{i}
++ \alpha \ln \beta
+- \ln \Gamma(\alpha)
+\right]
+$$
+
+**6) Beta**\
+$X \sim \text{Beta}(\alpha, \beta), \quad \alpha, \beta \in (0, +\infty)$
+
+$$
+l(\theta; \underline{x}) =
+\sum_{i=1}^{m}
+\left[
+(\alpha - 1) \ln x_{i}
++ (\beta - 1) \ln(1 - x_{i})
+- \ln B(\alpha, \beta)
+\right]
+$$
+
+### 5.c) Reprezentări grafice ale log-verosimilitate + punctul de maxim (MLE)
+
+#### 5.c.1 Binomială
+
+```{r ex5c-binom, fig.height=4.5, cache=TRUE}
+set.seed(123)
+
+#binomiala
+N <- 10^5
+n <- 10
+p <- 0.5
+X_n <- rbinom(N, n, p)
+
+log_verosim <- function(n, x, p){
+  termen_combinari <- lchoose(n, x) # ln(combinari)
+  termen_2 <- x * log(p/(1-p))
+  termen_3 <- n * log(1-p)
+  suma <- sum(termen_combinari + termen_2 + termen_3)
+  return(suma)
+}
+
+p_valori <- seq(0.01, 0.99, length.out = 100)
+log_valori <- sapply(p_valori, log_verosim, n = n, x = X_n)
+
+plot(p_valori, log_valori, type = "l", col = "blue", lwd = 2,
+     main = "Funcția de Log-Verosimilitate (Binomială)",
+     xlab = "Parametrul p", ylab = "Log-L(p)")
+
+rezultat_optimizare <- optimize(f = log_verosim,
+                                interval = c(0, 1),
+                                n = n,
+                                x = X_n,
+                                maximum = TRUE)
+
+cat("Punctul de maxim (MLE) este p =", rezultat_optimizare$maximum, "\n")
+
+abline(v = rezultat_optimizare$maximum, col = "red", lty = 2)
+legend("bottom", legend = paste("Maxim la p =", round(rezultat_optimizare$maximum, 4)),
+       col = "red", lty = 2)
+
+
+set.seed(123)
+
+N <- 10^5
+p <- 0.5
+X_n <- rgeom(N, p)
+
+log_verosim <- function(x, p){
+  termen1 <- log(1-p) * (x-1)
+  termen2 <- log(p)
+  suma <- sum(termen1 + termen2)
+  return(suma)
+}
+
+p_valori <- seq(0.01, 1, length.out = 100)
+log_valori <- sapply(p_valori, log_verosim, x = X_n)
+
+plot(p_valori, log_valori, type = "l", col = "darkgreen", lwd = 2,
+     main = "Log-Verosimilitate (Distribuție Geometrică)",
+     xlab = "Parametrul p", ylab = "Log-L(p)")
+
+rezultat_optimizare <- optimize(f = log_verosim,
+                                interval = c(0, 1),
+                                x = X_n,
+                                maximum = TRUE)
+
+cat("Punctul de maxim (MLE) calculat este p =", rezultat_optimizare$maximum, "\n")
+abline(v = rezultat_optimizare$maximum, col = "red", lty = 2)
+
+
+set.seed(123)
+
+N <- 10^5
+lambda <- 1
+X_n <- rpois(N, lambda)
+
+log_verosim <- function(x, lambda){
+  termen1 <- -lfactorial(x)
+  termen2 <- log(lambda) * x
+  return(sum(termen1 + termen2 - lambda))
+}
+
+lambda_valori <- seq(0.1, 10, length.out = 100)
+log_valori <- sapply(lambda_valori, log_verosim, x = X_n)
+
+plot(lambda_valori, log_valori, type = "l", col = "purple", lwd = 2,
+     main = "Log-Verosimilitate Poisson",
+     xlab = expression(lambda), ylab = "Log-L(lambda)")
+
+rezultat_optimizare <- optimize(f = log_verosim,
+                                interval = c(0.01, 5),
+                                x = X_n,
+                                maximum = TRUE)
+
+cat("Punctul de maxim (MLE) calculat este lambda =", rezultat_optimizare$maximum, "\n")
+abline(v = rezultat_optimizare$maximum, col = "red", lty = 2)
+
+set.seed(123)
+
+N <- 10^5
+lambda <- 1
+X_n <- rexp(N, rate = lambda)
+
+log_verosim <- function(lambda, x){
+  termen1 <- -lambda * x
+  termen2 <- log(lambda)
+  return(sum(termen1 + termen2))
+}
+
+lambda_valori <- seq(0.1, 3, length.out = 100)
+log_valori <- sapply(lambda_valori, log_verosim, x = X_n)
+
+plot(lambda_valori, log_valori, type = "l", col = "darkorange", lwd = 2,
+     main = "Log-Verosimilitate (Distribuție Exponențială)",
+     xlab = expression(lambda), ylab = "Log-L(lambda)")
+
+rezultat_optimizare <- optimize(f = log_verosim,
+                                interval = c(0.01, 10),
+                                x = X_n,
+                                maximum = TRUE)
+
+cat("Punctul de maxim (MLE) este lambda =", rezultat_optimizare$maximum, "\n")
+abline(v = rezultat_optimizare$maximum, col = "red", lty = 2)
+
+set.seed(123)
+
+N <- 10^5
+alfa_real <- 1
+beta_real <- 2
+X_n <- rgamma(N, shape = alfa_real, rate = beta_real)
+
+log_verosim <- function(alfa, beta, x) {
+  if (alfa <= 0) return(-Inf)
+
+  termen1 <- (alfa - 1) * log(x)
+  termen2 <- -beta * x
+  termen3 <- 2 * alfa * log(beta)
+  termen4 <- -2 * lgamma(alfa)
+
+  return(sum(termen1 + termen2 + termen3 + termen4))
+}
+
+alfa_valori <- seq(0.1, 5, length.out = 100)
+log_valori <- sapply(alfa_valori, log_verosim, beta = beta_real, x = X_n)
+
+plot(alfa_valori, log_valori, type = "l", col = "blue", lwd = 2,
+     main = expression(paste("Log-Verosimilitate pentru ", alpha)),
+     xlab = expression(alpha), ylab = "Log-L")
+
+rezultat_optimizare <- optimize(f = log_verosim,
+                                interval = c(0.1, 10),
+                                beta = beta_real,
+                                x = X_n,
+                                maximum = TRUE)
+
+abline(v = rezultat_optimizare$maximum, col = "red", lty = 2)
+cat("Punctul de maxim calculat pentru alfa este:", rezultat_optimizare$maximum, "\n")
+
+
+set.seed(123)
+
+N <- 10^5
+alfa_real <- 1
+beta_real <- 2
+X_n <- rgamma(N, shape = alfa_real, rate = beta_real)
+
+log_verosim <- function(alfa, beta, x) {
+  if (alfa <= 0) return(-Inf)
+
+  termen1 <- (alfa - 1) * log(x)
+  termen2 <- -beta * x
+  termen3 <- 2 * alfa * log(beta)
+  termen4 <- -2 * lgamma(alfa)
+
+  return(sum(termen1 + termen2 + termen3 + termen4))
+}
+
+beta_valori <- seq(0.1, 5, length.out = 100)
+log_valori <- sapply(beta_valori, function(b) log_verosim(alfa_real, b, X_n))
+
+plot(beta_valori, log_valori, type = "l", col = "blue", lwd = 2,
+     main = expression(paste("Log-Verosimilitate pentru ", beta)),
+     xlab = expression(beta), ylab = "Log-L")
+
+rezultat_optimizare <- optimize(f = function(b) log_verosim(alfa_real, b, X_n),
+                                interval = c(0.1, 10),
+                                maximum = TRUE)
+
+abline(v = rezultat_optimizare$maximum, col = "red", lty = 2)
+cat("Punctul de maxim calculat pentru beta este:", rezultat_optimizare$maximum, "\n")
+
+set.seed(123)
+
+N <- 10^5
+alfa_real <- 1
+beta_real <- 2
+X_n <- rbeta(N, shape1 = alfa_real, shape2 = beta_real)
+
+log_verosim <- function(alfa_real, beta_real, x){
+  termen1 <- (alfa_real - 1) * log(x)
+  termen2 <- (beta_real - 1) * log(1 - x)
+  termen3 <- -2 * log(beta(alfa_real, beta_real))
+  return(sum(termen1 + termen2 + termen3))
+}
+
+alfa_valori <- seq(0.1, 5, length.out = 100)
+log_valori <- sapply(alfa_valori, log_verosim, beta_real = beta_real, x = X_n)
+
+plot(alfa_valori, log_valori, type = "l", col = "darkblue", lwd = 2,
+     main = expression(paste("Log-Verosimilitate Beta pentru ", alpha)),
+     xlab = expression(alpha), ylab = "Log-L")
+
+rezultat_optimizare <- optimize(f = function(a) log_verosim(a, beta_real, X_n),
+                                interval = c(0.1, 10),
+                                maximum = TRUE)
+
+abline(v = rezultat_optimizare$maximum, col = "red", lty = 2)
+cat("Punctul de maxim calculat pentru alfa este:", rezultat_optimizare$maximum, "\n")
+
+set.seed(123)
+
+N <- 10^5
+alfa_real <- 1
+beta_real <- 2
+X_n <- rbeta(N, shape1 = alfa_real, shape2 = beta_real)
+
+log_verosim <- function(alfa_real, beta_real, x){
+  termen1 <- (alfa_real - 1) * log(x)
+  termen2 <- (beta_real - 1) * log(1 - x)
+  termen3 <- -2 * log(beta(alfa_real, beta_real))
+  return(sum(termen1 + termen2 + termen3))
+}
+
+beta_valori <- seq(0.1, 5, length.out = 100)
+log_valori <- sapply(beta_valori, function(b) log_verosim(alfa_real, b, X_n))
+
+plot(beta_valori, log_valori, type = "l", col = "darkblue", lwd = 2,
+     main = expression(paste("Log-Verosimilitate Beta pentru ", beta)),
+     xlab = expression(beta), ylab = "Log-L")
+
+rezultat_optimizare <- optimize(f = function(b) log_verosim(alfa_real, b, X_n),
+                                interval = c(0.1, 10),
+                                maximum = TRUE)
+
+abline(v = rezultat_optimizare$maximum, col = "red", lty = 2)
+cat("Punctul de maxim calculat pentru beta este:", rezultat_optimizare$maximum, "\n")
+
+```
+
+------------------------------------------------------------------------
+
+## Exercițiul 6
+
+### 6.a)
+
+a)  $X \sim \text{Bin}(n, p), \quad p \in (0, 1), \quad m \in \mathbb{N}$.
+    $$
+    P(X=k) = C_n^k p^k (1-p)^{n-k}, \quad k \in \mathbb{N}
+    $$ $$
+    E[X] = n \cdot p, \quad \text{Var}(X) = np(1-p)
+    $$
+
+\textcolor{green}{\textbf{MM:}} Fie
+$X_1, \dots, X_m \text{ i.i.d } \sim \text{Bin}(n, p)$
+
+$$
+E[X] = \overline{X}_m = \frac{1}{m} \sum_{i=1}^m X_i \iff n \cdot p = \overline{X}_m \iff \underbrace{\hat{p}_{m} = \frac{1}{n} \overline{X}_m}_{\text{estimatorul obținut prin MM}}, \quad n \in \mathbb{N}^*.
+$$
+
+\textcolor{green}{\textbf{MVM:}} $$
+\ell(p; x_1, \dots, x_m) = \sum_{i=1}^m \ln C_n^{x_i} + \ln \frac{p}{1-p} \cdot x_i + n \ln(1-p) \quad \Bigg| \frac{\partial}{\partial p} \implies
+$$
+
+Calculul derivatei: $$
+\implies \frac{\partial \ell}{\partial p}(p; \underline{x}) = \sum_{i=1}^m \frac{1-p}{p} \cdot \left( \frac{p}{1-p} \right)'_p \cdot x_i - \frac{n}{1-p}
+$$ $$
+= \sum_{i=1}^m \left( \frac{x_i}{p(1-p)} - \frac{n}{1-p} \right) = - \frac{m \cdot n}{1-p} + \frac{1}{p(1-p)} m \overline{x}_m
+$$
+
+Vrem $p$ a.î. $\frac{\partial l}{\partial p}(p, x_i) = 0$.
+
+$$
+\Leftrightarrow -\frac{m \cdot n}{1-p} + \frac{1}{p(1-p)} m \overline{x}_m = 0 
+\Leftrightarrow \frac{1}{p(1-p)} m \overline{x}_m = \frac{m \cdot n}{1-p}
+$$
+
+$$
+\Rightarrow \frac{1}{p} = \frac{n}{\overline{x}_m} \Rightarrow p_m = \frac{\overline{x}_m}{n} \quad (\text{estimare})
+$$
+
+Observație (verificare): $$
+m \overline{x}_m = \frac{m \cdot n}{(1-p)} \cdot p(1-p) = m \cdot n \cdot p \quad (\text{Nu estimator})
+$$
+
+### $p_m$ punct de maxim pentru $l$
+
+$$
+\frac{\partial^2 l}{\partial p^2}(p, x_i) = \frac{\partial}{\partial p} \left( \frac{\partial l}{\partial p}(p, x_i) \right) 
+= \frac{\partial}{\partial p} \left( -\frac{m \cdot n}{1-p} + \frac{1}{p(1-p)} m \overline{x}_m \right)
+$$
+
+$$
+= -\frac{m \cdot n}{(1-p)^2} - \frac{m \overline{x}_m}{p^2(1-p)^2}(1-2p)
+$$
+
+Substituind $m \overline{x}_m = m \cdot n \cdot p$:
+
+$$
+= \frac{-m \cdot n \cdot p^2 - m \cdot n \cdot p \cdot (1-2p)}{p^2(1-p)^2} = \frac{-m \cdot n \cdot p (p^2 + 1)(1-2p)}{p^2(1-p)^2}
+$$
+
+Analiza semnului pentru termenul $(1-2p)$: $$
+\begin{aligned}
+0 < p < 1 \mid \cdot 2 &\Rightarrow 0 < 2p < 2 \\
+&\Rightarrow -2 < -2p < 0 \\
+&\Rightarrow -1 < 1-2p < 1 \quad (\text{nu are semn constant})
+\end{aligned}
+$$
+
+Calcul derivată fracție (caseta de jos): $$
+\left( \frac{1}{p(1-p)} \right)' = \left( \frac{1}{p} \cdot \frac{1}{1-p} \right)' 
+= -\frac{1}{p^2} \cdot \frac{1}{1-p} - \frac{1}{p} \frac{1}{(1-p)^2} (-1)
+$$
+
+Evaluare finală (scrierea cu roșu): $$
+= \frac{1}{p(1-p)} \left( -\frac{1}{p} - \frac{1}{1-p} \right) \dots = \frac{m \cdot n}{1-p} \left[ -\frac{1}{1-p} + \frac{1}{p} + \frac{1}{1-p} \right] > 0
+$$
+
+------------------------------------------------------------------------
+
+b)  $X_1, \dots, X_n \sim \text{Geom}(p), p \in (0, 1)$, i.i.d
+
+$$
+\text{MVM}  \quad \ l(p, \underline{x}) = \sum_{i=1}^n \left[ \ln(1-p) \cdot (x_i - 1) + \ln p \right] = n \ln p + \ln(1-p) \sum_{i=1}^n (x_i - 1)
+$$
+
+$$
+= n \ln p + \ln(1-p) \sum_{i=1}^n x_i - n \ln(1-p) = n \left[ \ln p + \ln(1-p) \cdot \overline{x}_m - \ln(1-p) \right]
+$$
+
+$$
+\frac{\partial l}{\partial p}(p, \underline{x}) = n \left[ \frac{1}{p} - \frac{\overline{x}_m}{1-p} + \frac{1}{1-p} \right] \stackrel{\text{VREAU}}{=} 0 \Rightarrow \frac{1}{p} = - \frac{1 - \overline{x}_m}{1-p}
+$$
+
+$$
+\Leftrightarrow 1-p = -p(1-\overline{x}_m) \Leftrightarrow \frac{1-p}{p} = \overline{x}_m - 1 \Rightarrow \frac{1}{p} = \overline{x}_m \Rightarrow p = \frac{1}{\overline{x}_m}
+$$
+
+$$
+\frac{\partial^2 l}{\partial p^2} = \frac{\partial}{\partial p} \left( n \left[ \frac{1}{p} - \frac{\overline{x}_m}{1-p} + \frac{1}{1-p} \right] \right) = n \left[ -\frac{1}{p^2} - \frac{\overline{x}_m}{(1-p)^2} + \frac{1}{(1-p)^2} \right]
+$$
+
+Substituind $\overline{x}_m = \frac{1}{p}$ (din punctul critic):
+
+$$
+= n \left[ -\frac{1}{p^2} - \frac{1/p}{(1-p)^2} + \frac{1}{(1-p)^2} \right] = n \frac{-(1-p)^2 - p + p^2}{p^2(1-p)^2}
+$$
+
+$$
+= \frac{n}{p^2(1-p)^2} (p^2 - p - 1 + 2p - p^2) = - \frac{n(1-p)}{p^2(1-p)^2} = - \frac{n}{p^2(1-p)} < 0
+$$
+
+$$
+\Rightarrow \hat{p} = \frac{1}{\overline{x}_m}
+$$
+
+$$
+\text{MM} \quad E[X] = \overline{X}_m \Leftrightarrow \frac{1}{p} = \overline{X}_m \Rightarrow \hat{p} = \frac{1}{\overline{x}_m}
+$$
+
+------------------------------------------------------------------------
+
+c)  $X_1, \dots, X_n \sim \text{Poisson}(\lambda), \lambda > 0$ i.i.d
+
+$$
+\text{MVM} \quad  \ l(\lambda, \underline{x}) = \sum_{i=1}^n \left[ \ln \frac{1}{x_i!} + \ln \lambda \cdot x_i - \lambda \right]
+$$
+
+$$
+\frac{\partial l}{\partial \lambda}(\lambda, \underline{x}) = \sum_{i=1}^n \left( \frac{x_i}{\lambda} - 1 \right) = -n + \frac{1}{\lambda} \cdot \sum_{i=1}^n x_i = \frac{n}{\lambda} \overline{x}_n - n = n \left( \frac{\overline{x}_n}{\lambda} - 1 \right)
+$$
+
+Vreau
+$\frac{\partial l}{\partial \lambda} = 0 \Rightarrow \frac{\overline{x}_n}{\lambda} - 1 = 0 \Leftrightarrow \lambda = \overline{x}_n$.
+
+$$
+\frac{\partial^2 l}{\partial \lambda^2}(\lambda, \underline{x}) = \frac{\partial}{\partial \lambda} \left( \sum_{i=1}^n \left( \frac{x_i}{\lambda} - 1 \right) \right) = \sum_{i=1}^n \left( - \frac{x_i}{\lambda^2} \right) = - \frac{1}{\lambda^2} \sum_{i=1}^n x_i = - \frac{n}{\lambda^2} \overline{x}_n
+$$
+
+$$
+= - \frac{n}{\lambda} < 0
+$$
+
+$$
+\Rightarrow \hat{\lambda}_n = \overline{x}_n
+$$ $$
+\text{MM} \quad E[X] = \overline{X}_n \Leftrightarrow \hat{\lambda} = \overline{X}_n \ 
+$$
+
+------------------------------------------------------------------------
+
+d)  $X_1, \dots, X_n \sim \text{Exp}(\lambda), \lambda > 0$, i.i.d
+
+$$
+l(\lambda, \underline{x}) = \sum_{i=1}^n (-\lambda x_i + \ln \lambda)
+$$
+
+$$
+\frac{\partial l}{\partial \lambda}(\lambda, \underline{x}) = \sum_{i=1}^n \left( -x_i + \frac{1}{\lambda} \right) = \frac{n}{\lambda} - n \overline{x}_n = n \left( \frac{1}{\lambda} - \overline{x}_n \right)
+$$
+
+Vrem
+$\frac{\partial l}{\partial \lambda} = 0 \Rightarrow \lambda = \frac{1}{\overline{x}_n}$.
+
+$$
+\frac{\partial^2 l}{\partial \lambda^2} = \frac{\partial}{\partial \lambda} \left( n \left( \frac{1}{\lambda} - \overline{x}_n \right) \right) = - \frac{n}{\lambda^2} < 0 \Rightarrow \hat{\lambda}_n = \frac{1}{\overline{X}_n}
+$$
+
+$$
+\text{MM: trivial (vezi A.)}
+$$
+
+------------------------------------------------------------------------
+
+e)  $X_1, \dots, X_n \sim \text{Gamma}(\alpha, \beta); \alpha, \beta > 0$
+    i.i.d.
+
+$$
+\text{MM}: \begin{cases}
+E[X] = \overline{X}_n \iff \frac{\alpha}{\beta} = \overline{X}_n \\
+E[X^2] = \frac{1}{n} \sum_{i=1}^n x_i^2 = \overline{x_n^2}
+\end{cases}
+$$
+
+$$
+\frac{\alpha}{\beta^2} = \text{Var}(X) = E[X^2] - (E[X])^2 = E[X^2] - \frac{\alpha^2}{\beta^2} \Rightarrow E[X^2] = \frac{\alpha(\alpha+1)}{\beta^2}
+$$
+
+$$
+\text{Deci } \begin{cases}
+\frac{\alpha}{\beta} = \overline{X}_n \Rightarrow \alpha = \beta \overline{X}_n \\
+\frac{\alpha(\alpha+1)}{\beta^2} = \overline{x_n^2}
+\end{cases}
+\implies \frac{\beta \overline{X}_n (\beta \overline{X}_n + 1)}{\beta^2} = \overline{x_n^2} \iff \beta (\overline{X}_n)^2 + \overline{X}_n = \beta \overline{x_n^2}
+$$
+
+$$
+\Rightarrow \hat{\beta} = \frac{- \overline{X}_n}{(\overline{X}_n)^2 - \overline{x_n^2}} \Rightarrow \hat{\alpha} = \frac{- (\overline{X}_n)^2}{(\overline{X}_n)^2 - \overline{x_n^2}}
+$$
+
+$$
+\text{Deci } \hat{\gamma}_n = (\hat{\alpha}, \hat{\beta}) \text{ este estimatorul 2-d}
+$$
+
+$$
+\text{MVM} \quad l((\alpha, \beta); \underline{x}) = \sum_{i=1}^n \left[ (\alpha-1)\ln x_i - \beta x_i + \alpha \ln \beta - \ln \Gamma(\alpha) \right]
+$$
+
+$$
+\nabla l = \left( \frac{\partial l}{\partial \alpha}, \frac{\partial l}{\partial \beta} \right), \ \Delta l = 0, \ H_l (\alpha_0, \beta_0) \text{ negativ (semi) definita}
+$$
+
+$$
+\frac{\partial l}{\partial \alpha}((\alpha, \beta), \underline{x}) = \sum_{i=1}^n \left[ \ln x_i + \ln \beta - \frac{\Gamma'(\alpha)}{\Gamma(\alpha)} \right]
+$$
+
+$$
+\left( \text{obs: } \frac{\Gamma'(\alpha)}{\Gamma(\alpha)} = \psi(\alpha); \quad \Gamma(\alpha) = \int_0^\infty t^{\alpha-1} e^{-t} dt \Rightarrow \Gamma'(\alpha) = \int_0^\infty t^{\alpha-1} \ln t \cdot e^{-t} dt \right)
+$$
+
+$$
+= \sum_{i=1}^n (\ln x_i) + n \ln \beta - n \psi(\alpha) \stackrel{\text{VREAU}}{=} 0.
+$$
+
+$$
+\frac{\partial l}{\partial \beta}((\alpha, \beta), \underline{x}) = - \sum_{i=1}^n x_i + n \frac{\alpha}{\beta} \stackrel{\text{VREAU}}{=} 0 \Rightarrow \beta = \dots \text{ succes } \Rightarrow \beta = \frac{\alpha}{\overline{x}_n}
+$$
+
+------------------------------------------------------------------------
+
+f)  $X_1, \dots, X_n \sim \text{Beta}(\alpha, \beta), \alpha, \beta > 0$
+    i.i.d.
+
+$$
+l((\alpha, \beta), \underline{x}) = \sum_{i=1}^n \left[ (\alpha-1)\ln x_i + (\beta-1)\ln(1-x_i) - \ln B(\alpha, \beta) \right]
+$$
+
+$$
+\text{MM} \quad \begin{cases}
+E[X] = \overline{X}_n \iff \frac{\alpha}{\alpha+\beta} = \overline{X}_n \\
+E[X^2] = \overline{X_n^2} \Leftrightarrow \frac{\alpha \beta + \alpha^2(\alpha+\beta+1)}{(\alpha+\beta)^2 (\alpha+\beta+1)} = \overline{X_n^2}
+\end{cases}
+$$
+
+$$
+\frac{\alpha \beta}{(\alpha+\beta)^2 (\alpha+\beta+1)} = \text{Var}(X) = E[X^2] - (E[X])^2 \Rightarrow
+$$
+
+$$
+\Rightarrow E[X^2] = \frac{\alpha \beta}{(\alpha+\beta)^2 (\alpha+\beta+1)} + \frac{\alpha^2}{(\alpha+\beta)^2} = \frac{\alpha \beta + \alpha^2(\alpha+\beta+1)}{(\alpha+\beta)^2 (\alpha+\beta+1)}
+$$
+
+------------------------------------------------------------------------
+
+### 6.b)
+
+În această secțiune verificăm numeric, prin simulări Monte Carlo,
+calitatea estimatorilor obținuți prin Metoda Momentelor (MM) și Metoda
+Verosimilității Maxime (MLE).
+
+```{r simulari_estimatori, fig.width=8, fig.height=6, cache=TRUE}
+# =========================================================
+# 1. Distribuția Binomială (MM)
+# =========================================================
+N <- 1000
+n <- 7
+p_real <- seq(0, 1, length.out = 100)
+
+# Calculul estimatorilor
+e_mm_values <- sapply(p_real, function(p) {
+  x <- rbinom(N, n, p)
+  (1/n) * mean(x)
+})
+
+# Graficul
+plot(p_real, e_mm_values,
+     main = "Relația dintre p real și p estimat (Binomială)",
+     xlab = "p (Real)",
+     ylab = "e_mm (Estimat)",
+     col = "blue",
+     pch = 19) 
+
+# Adăugăm linia roșie de referință y = x
+abline(a = 0, b = 1, col = "red", lwd = 2, lty = 2)
+
+
+# =========================================================
+# 2. Distribuția Geometrică (MM)
+# =========================================================
+N <- 1000
+p_real <- seq(0, 1, length.out = 100)
+
+# Calculul estimatorilor
+e_mm_values <- sapply(p_real, function(p) {
+  x <- rgeom(N,p)
+  1/(mean(x)+1)
+})
+
+# Graficul
+plot(p_real, e_mm_values,
+     main = "Relația dintre p real și p estimat (Geometrică)",
+     xlab = "p (Real)",
+     ylab = "e_mm (Estimat)",
+     col = "blue",
+     pch = 19)
+
+# Adăugăm linia roșie de referință y = x
+abline(a = 0, b = 1, col = "red", lwd = 2, lty = 2)
+
+
+# =========================================================
+# 3. Distribuția Poisson (MM)
+# =========================================================
+N <- 1000
+lambda_real <- seq(0, 10, length.out = 100)
+
+# Calculul estimatorilor
+e_mm_values <- sapply(lambda_real, function(p) {
+  x <- rpois(N,p)
+  mean(x)
+})
+
+# Graficul
+plot(lambda_real, e_mm_values,
+     main = "Relația dintre lambda real și lambda estimat (Poisson)",
+     xlab = "lambda (Real)",
+     ylab = "e_mm (Estimat)",
+     col = "blue",
+     pch = 19)
+
+# Adăugăm linia roșie de referință y = x
+abline(a = 0, b = 1, col = "red", lwd = 2, lty = 2)
+
+
+# =========================================================
+# 4. Distribuția Exponențială (MM)
+# =========================================================
+N <- 1000
+lambda_real <- seq(0, 50, length.out = 200)
+
+# Calculul estimatorilor
+e_mm_values <- sapply(lambda_real, function(p) {
+  x <- rexp(N,p)
+  1/mean(x)
+})
+
+# Graficul
+plot(lambda_real, e_mm_values,
+     main = "Relația dintre lambda real și lambda estimat (Exp)",
+     xlab = "lambda (Real)",
+     ylab = "e_mm (Estimat)",
+     col = "blue",
+     pch = 19)
+
+# Adăugăm linia roșie de referință y = x
+abline(a = 0, b = 1, col = "red", lwd = 2, lty = 2)
+
+
+# =========================================================
+# 5. Distribuția Gamma
+# Metoda Momentelor (MM) - Formule explicite
+# =========================================================        
+
+library(ggplot2)
+
+# 1. Setări
+N <- 1000
+
+# Definim secvențele scurte
+vals_alfa <- seq(0.5, 30, length.out = 30)
+vals_beta <- seq(0.5, 30, length.out = 30)
+        
+# 2. Generarea Gridului
+param_grid <- expand.grid(Alfa_Real = vals_alfa, Beta_Real = vals_beta)
+
+# 3. Calculul Estimatorilor pe Grid (Alfa)
+param_grid$Alfa_Estimat <- mapply(function(a, b) {
+ x <- rgamma(N, shape = a, rate = b)
+ return((mean(x)^2) / var(x))
+}, param_grid$Alfa_Real, param_grid$Beta_Real)
+ 
+# 4. Graficul pentru Alfa (MM)
+p1 <- ggplot(param_grid, aes(x = Alfa_Real, y = Alfa_Estimat)) +
+  geom_point(aes(color = Beta_Real), alpha = 0.6, size = 1.5) +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed", size = 1) +
+  scale_color_viridis_c(option = "plasma", name = "Valoarea Beta") +
+  labs(
+   title = "Gamma MM: Corelația dintre Alfa Real și Alfa Estimat",
+   subtitle = "Estimarea Alfa este stabilă indiferent de Beta",
+   x = "Alfa Real (Parametrul setat)",
+   y = "Alfa Estimat (Metoda Momentelor)"
+  ) +
+  theme_minimal()
+
+print(p1)
+ 
+# 5. Calculul Estimatorilor pe Grid (Beta)
+param_grid$Beta_Estimat <- mapply(function(a, b) {
+ x <- rgamma(N, shape = a, rate = b)
+ return(mean(x) / var(x))
+}, param_grid$Alfa_Real, param_grid$Beta_Real)
+
+# 6. Graficul pentru Beta (MM)
+p2 <- ggplot(param_grid, aes(x = Beta_Real, y = Beta_Estimat)) +
+  geom_point(aes(color = Alfa_Real), alpha = 0.6, size = 1.5) +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed", size = 1) +
+  scale_color_viridis_c(option = "turbo", name = "Valoarea Alfa") +
+  labs(
+   title = "Gamma MM: Acuratețea Estimării parametrului Beta",
+   subtitle = "Estimarea Beta este robustă, indiferent de valoarea lui Alfa",
+   x = "Beta Real (Parametrul setat)",
+   y = "Beta Estimat (Media / Varianța)"
+  ) +
+  theme_minimal()
+
+print(p2)
+
+
+# =========================================================
+# Metoda Verosimilității Maxime (MLE) - Numerică (Gamma)
+# =========================================================
+library(MASS) # Pentru fitdistr
+
+# 1. Setări Simulare
+N <- 1000
+vals_alfa <- seq(1, 20, length.out = 20)
+vals_beta <- seq(1, 20, length.out = 20)
+param_grid <- expand.grid(Alfa_Real = vals_alfa, Beta_Real = vals_beta)
+
+# 2. Calculul Estimatorilor MLE
+# Această parte poate dura câteva secunde!
+rezultate_mle <- mapply(function(a, b) {
+  x <- rgamma(N, shape = a, rate = b)
+  fit <- fitdistr(x, "gamma")
+  return(c(fit$estimate["shape"], fit$estimate["rate"]))
+}, param_grid$Alfa_Real, param_grid$Beta_Real)
+
+param_grid$Alfa_Estimat <- rezultate_mle[1, ] 
+param_grid$Beta_Estimat <- rezultate_mle[2, ] 
+
+# 3. Graficul Alfa (MLE)
+plot_alfa <- ggplot(param_grid, aes(x = Alfa_Real, y = Alfa_Estimat)) +
+  geom_point(aes(color = Beta_Real), alpha = 0.7, size = 2) +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed", size = 1) +
+  scale_color_viridis_c(option = "plasma", name = "Beta Real") +
+  labs(
+    title = "Estimare MLE: Alfa Estimat vs Alfa Real",
+    subtitle = "Metoda Verosimilității Maxime (fitdistr)",
+    x = "Alfa Real",
+    y = "Alfa Estimat (Shape)"
+  ) +
+  theme_minimal()
+
+print(plot_alfa)
+
+# 4. Graficul Beta (MLE)
+plot_beta <- ggplot(param_grid, aes(x = Beta_Real, y = Beta_Estimat)) +
+  geom_point(aes(color = Alfa_Real), alpha = 0.7, size = 2) +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed", size = 1) +
+  scale_color_viridis_c(option = "turbo", name = "Alfa Real") +
+  labs(
+    title = "Estimare MLE: Beta Estimat vs Beta Real",
+    subtitle = "Metoda Verosimilității Maxime (fitdistr)",
+    x = "Beta Real",
+    y = "Beta Estimat (Rate)"
+  ) +
+  theme_minimal()
+
+print(plot_beta)
+
+```
+
+------------------------------------------------------------------------
+
+## Exercițiul 7 și Exercițiul 8
+
+### 1.Distribuția Binomială
+
+```{r inegalitatea_Berry_Essen_binomiala, fig.width=8, fig.height=6, cache=TRUE}
+# Problema 7
+
+# Binomială de parametri N și p
+
+# Funcție ce calculează rho = E[|X-mu|^3]
+rho_binom <- function(N, p) {
+  mu <- N * p
+  k <- 0:N
+  
+  sum(abs(k - mu)^3 * dbinom(k, size = N, prob = p))
+}
+
+# Funcție ce calculează marginea Berry-Esseen, dată de inegalitate
+margine_binom <- function(n, N, p, C = 0.4748) {
+  mu <- N * p
+  sigma <- sqrt(N * p * (1 - p))
+  rho <- rho_binom(N, p)
+  
+  C * rho / (sigma^3 * sqrt(n))
+}
+
+# Funcție ce aproximează convenabil supremumul din inegalitatea Berry-Esseen
+sup_binom <- function(n, N, p,
+                                M = 1000000,
+                                grid_size = 2000,
+                                q_low = 1e-4,
+                                q_high = 1 - 1e-4) {
+  mu <- N * p
+  sigma <- sqrt(N * p * (1 - p))
+
+  X <- matrix(
+    rbinom(M * n, size = N, prob = p),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+
+  max(abs(cdf_empirica - cdf_normala))
+}
+
+# Funcție ce construiește dataframe-ul cu marginile Berry-Esseen vs. volumul eșantionului
+dataframe_binom <- function(n_valori, N, p, C = 0.4748) {
+  margini <- sapply(
+    n_valori,
+    function(n) margine_binom(n, N, p, C)
+  )
+  
+  data.frame(
+    n = n_valori,
+    margine_BE = margini
+  )
+}
+
+# Funcție ce reprezintă dependența x vs. 
+plot_cdf_diferenta_binom <- function(n, N, p,
+                                M = 1000000,
+                                grid_size = 2000,
+                                q_low = 1e-4,
+                                q_high = 1 - 1e-4) {
+  mu <- N * p
+  sigma <- sqrt(N * p * (1 - p))
+  
+  X <- matrix(
+    rbinom(M * n, size = N, prob = p),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+  
+  diff_abs <- abs(cdf_empirica - cdf_normala)
+  
+  plot(
+    x_grid, diff_abs,
+    type = "l",
+    lwd = 2,
+    col = "blue",
+    xlab = expression(x),
+    ylab = bquote(abs(F[.(n)](x) - Phi(x))),
+    main = bquote("|" * F[.(n)](x) - Phi(x) * "|" ~~ "pentru Bin("~.(N)~","~.(p)~")")
+  )
+  
+  max_idx <- which.max(diff_abs)
+  points(x_grid[max_idx], diff_abs[max_idx], col = "red", pch = 19)
+  
+  invisible(
+    list(
+      x = x_grid,
+      diff = diff_abs,
+      sup_numeric = max(diff_abs)
+    )
+  )
+}
+
+# Parametri
+n <- 300   #volumul eșantionului
+N <- 15      #Bin(N, p)
+p <- 0.25    #Bin(N, p)
+n_valori <- c(10, 20, 50, 100, 200, 500, 1000, 5000, 10000, 50000, 100000, 500000, 1000000)
+
+# Linii de cod pentru execuție
+rho_binom(N, p)
+margine_binom(n, N, p)
+sup_binom(n, N, p)
+dataframe_binom(n_valori, N, p)
+plot_cdf_diferenta_binom(n, N, p)
+
+# Exercițiul 8
+#a) definim C_n
+C_n <- sup_binom(n, N, p) / margine_binom(n, N, p, C = 1)
+
+#b) folosim deja metoda Monte-Carlo în funcția sup_binom
+n_valori <- c(30, 50, 100, 200, 500)
+
+calculeaza_Cn <- function(n, N, p, M = 5000, grid_size = 2000, q_low = 1e-4, q_high = 1 - 1e-4, C = 1) {
+  sup_binom(n, N, p, M, grid_size, q_low, q_high) / margine_binom(n, N, p, C)
+}
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, N, p))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+
+#c) variem, pe rând, n (păstrând p constant), apoi p (păstrând n constant)
+n_valori <- c(30, 50, 100, 200, 500, 1000, 5000, 10000, 15000, 20000)
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, N, p))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+p_valori <- seq(1e-6, 1 - 1e-6, length.out = 100)
+valori_Cn_p <- sapply(p_valori, function(p) calculeaza_Cn(n, N, p))
+data.frame(
+  p = p_valori,
+  C_n = valori_Cn_p
+)
+
+# d)
+plot(
+  n_valori, valori_Cn_n,
+  type = "b",
+  pch = 19,
+  xlab = "n",
+  ylab = expression(C[n]),
+  main = bquote("Evoluția lui" ~ C[n] ~ "pentru Bin("~.(N)~","~.(p)~")")
+)
+
+plot(
+  p_valori, valori_Cn_p,
+  type = "l",
+  lwd = 2,
+  xlab = "p",
+  ylab = bquote(C[.(n)]),
+  main = bquote("Evoluția lui" ~ C[.(n)] ~ "pentru Bin("~.(N)~","~ p ~")")
+)
+```
+
+------------------------------------------------------------------------
+
+###  2.Distribuția Beta
+
+```{r inegalitatea_Berry_Essen_beta, fig.width=8, fig.height=6, cache=TRUE}
+
+# Problema 7
+
+# Gamma de parametri alfa și beta
+
+# Funcție ce calculează rho = E[|X-mu|^3]
+f <- function(x, alfa, beta){
+  mu <- alfa / (alfa + beta)
+  
+  abs(x - mu)^3 * dbeta(x, shape1 = alfa, shape2 = beta)
+}
+
+rho_beta <- function(alfa, beta) {
+  integrate(function(x) f(x, alfa, beta), 0, 1)$value
+}
+
+# Funcție ce calculează marginea Berry-Esseen, dată de inegalitate
+margine_beta <- function(n, alfa, beta, C = 0.4748) {
+  mu <- alfa / (alfa + beta)
+  sigma <- sqrt(alfa * beta / ((alfa + beta)^2 * (alfa + beta + 1)))
+  rho <- rho_beta(alfa, beta)
+  
+  C * rho / (sigma^3 * sqrt(n))
+}
+
+# Funcție ce aproximează convenabil supremumul din inegalitatea Berry-Esseen
+sup_beta <- function(n, alfa, beta,
+                      M = 1000000,
+                      grid_size = 2000,
+                      q_low = 1e-4,
+                      q_high = 1 - 1e-4) {
+  mu <- alfa / (alfa + beta)
+  sigma <- sqrt(alfa * beta / ((alfa + beta)^2 * (alfa + beta + 1)))
+  
+  X <- matrix(
+    rbeta(M * n, shape1 = alfa, shape2 = beta),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+  
+  max(abs(cdf_empirica - cdf_normala))
+}
+
+# Funcție ce construiește dataframe-ul cu marginile Berry-Esseen vs. volumul eșantionului
+dataframe_beta <- function(n_valori, alfa, beta, C = 0.4748) {
+  margini <- sapply(
+    n_valori,
+    function(n) margine_beta(n, alfa, beta, C)
+  )
+  
+  data.frame(
+    n = n_valori,
+    margine_BE = margini
+  )
+}
+
+# Funcție ce reprezintă dependența x vs. 
+plot_cdf_diferenta_beta <- function(n, alfa, beta,
+                                     M = 1000000,
+                                     grid_size = 2000,
+                                     q_low = 1e-4,
+                                     q_high = 1 - 1e-4) {
+  mu <- alfa / (alfa + beta)
+  sigma <- sqrt(alfa * beta / ((alfa + beta)^2 * (alfa + beta + 1)))
+  
+  X <- matrix(
+    rbeta(M * n, shape1 = alfa, shape2 = beta),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+  
+  diff_abs <- abs(cdf_empirica - cdf_normala)
+  
+  plot(
+    x_grid, diff_abs,
+    type = "l",
+    lwd = 2,
+    col = "blue",
+    xlab = expression(x),
+    ylab = bquote(abs(F[.(n)](x) - Phi(x))),
+    main = bquote("|" * F[.(n)](x) - Phi(x) * "|" ~~ "pentru Beta("~.(alfa)~","~.(beta)~")")
+  )
+  
+  max_idx <- which.max(diff_abs)
+  points(x_grid[max_idx], diff_abs[max_idx], col = "red", pch = 19)
+  
+  invisible(
+    list(
+      x = x_grid,
+      diff = diff_abs,
+      sup_numeric = max(diff_abs)
+    )
+  )
+}
+
+# Parametri
+n <- 300   #volumul eșantionului
+alfa <- 15    #Beta(alfa, beta)
+beta <- 70    #Beta(alfa, beta)
+n_valori <- c(10, 20, 50, 100, 200, 500, 1000, 5000, 10000, 50000, 100000, 500000, 1000000)
+
+# Linii de cod pentru execuție
+rho_beta(alfa, beta)
+margine_beta(n, alfa, beta)
+sup_beta(n, alfa, beta)
+dataframe_beta(n_valori, alfa, beta)
+plot_cdf_diferenta_beta(n, alfa, beta)
+
+
+# Exercițiul 8
+#a) definim C_n
+C_n <- sup_beta(n, alfa, beta) / margine_beta(n, alfa, beta, C = 1)
+
+#b) folosim deja metoda Monte-Carlo în funcția sup_binom
+n_valori <- c(30, 50, 100, 200, 500)
+
+calculeaza_Cn <- function(n, alfa, beta, M = 5000, grid_size = 2000, q_low = 1e-4, q_high = 1 - 1e-4, C = 1) {
+  sup_beta(n, alfa, beta, M, grid_size, q_low, q_high) / margine_beta(n, alfa, beta, C)
+}
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, alfa, beta))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+
+#c) variem, pe rând, n (păstrând alfa și beta constante), apoi alfa și beta (păstrând n constant)
+n_valori <- c(30, 50, 100, 200, 500, 1000, 5000, 10000, 15000, 20000)
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, alfa, beta))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+
+alfa_valori <- seq(1, 500, length.out = 50)
+beta_valori <- seq(1, 500, length.out = 50)
+grid_param <- expand.grid(
+  alfa = alfa_valori,
+  beta = beta_valori
+)
+n <- 100
+grid_param$C_n <- mapply(
+  function(a, b) {
+    calculeaza_Cn(
+      n = n,
+      alfa = a,
+      beta = b,
+      M = 2000
+    )
+  },
+  grid_param$alfa,
+  grid_param$beta
+)
+
+# d)
+plot(
+  n_valori, valori_Cn_n,
+  type = "b",
+  pch = 19,
+  xlab = "n",
+  ylab = expression(C[n]),
+  main = bquote("Evoluția lui" ~ C[n] ~ "pentru Beta("~.(alfa)~","~.(beta)~")")
+)
+
+Cn_matrix <- matrix(
+  grid_param$C_n,
+  nrow = length(alfa_valori),
+  ncol = length(beta_valori),
+  byrow = FALSE
+)
+library(plotly)
+
+plot_ly(
+  x = alfa_valori,
+  y = beta_valori,
+  z = Cn_matrix,
+  type = "surface"
+) %>%
+  layout(
+    title = bquote("C"[.(n)] ~ "pentru Beta("~alpha~","~beta~")"),
+    scene = list(
+      xaxis = list(title = "alpha"),
+      yaxis = list(title = "beta"),
+      zaxis = list(title = "C_n")
+    )
+  )
+```
+
+------------------------------------------------------------------------
+
+### 3.Distribuția Exponențială
+
+```{r inegalitatea_Berry_Essen_exp, fig.width=8, fig.height=6, cache=TRUE}
+
+# Problema 7
+
+# Exponențială de parametru lambda
+
+# Funcție ce calculează rho = E[|X-mu|^3]
+f <- function(x, lambda){
+  mu <- 1 / lambda
+  
+  abs(x - mu)^3 * dexp(x, rate = lambda)
+}
+
+rho_exp <- function(lambda) {
+  integrate(function(x) f(x, lambda), 0, Inf)$value
+}
+
+# Funcție ce calculează marginea Berry-Esseen, dată de inegalitate
+margine_exp <- function(n, lambda, C = 0.4748) {
+  mu <- 1 / lambda
+  sigma <- 1 / lambda
+  rho <- rho_exp(lambda)
+  
+  C * rho / (sigma^3 * sqrt(n))
+}
+
+# Funcție ce aproximează convenabil supremumul din inegalitatea Berry-Esseen
+sup_exp <- function(n, lambda,
+                      M = 1000000,
+                      grid_size = 2000,
+                      q_low = 1e-4,
+                      q_high = 1 - 1e-4) {
+  mu <- 1 / lambda
+  sigma <- 1 / lambda
+  
+  X <- matrix(
+    rexp(M * n, rate = lambda),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+  
+  max(abs(cdf_empirica - cdf_normala))
+}
+
+# Funcție ce construiește dataframe-ul cu marginile Berry-Esseen vs. volumul eșantionului
+dataframe_exp <- function(n_valori, lambda, C = 0.4748) {
+  margini <- sapply(
+    n_valori,
+    function(n) margine_exp(n, lambda, C)
+  )
+  
+  data.frame(
+    n = n_valori,
+    margine_BE = margini
+  )
+}
+
+# Funcție ce reprezintă dependența x vs. 
+plot_cdf_diferenta_exp <- function(n, lambda,
+                                     M = 1000000,
+                                     grid_size = 2000,
+                                     q_low = 1e-4,
+                                     q_high = 1 - 1e-4) {
+  mu <- 1 / lambda
+  sigma <- 1 / lambda
+  
+  X <- matrix(
+    rexp(M * n, rate = lambda),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+  
+  diff_abs <- abs(cdf_empirica - cdf_normala)
+  
+  plot(
+    x_grid, diff_abs,
+    type = "l",
+    lwd = 2,
+    col = "blue",
+    xlab = expression(x),
+    ylab = bquote(abs(F[.(n)](x) - Phi(x))),
+    main = bquote("|" * F[.(n)](x) - Phi(x) * "|" ~~ "pentru Exp("~.(lambda)~")")
+  )
+  
+  max_idx <- which.max(diff_abs)
+  points(x_grid[max_idx], diff_abs[max_idx], col = "red", pch = 19)
+  
+  invisible(
+    list(
+      x = x_grid,
+      diff = diff_abs,
+      sup_numeric = max(diff_abs)
+    )
+  )
+}
+
+# Parametri
+n <- 300   #volumul eșantionului
+lambda <- 23    #Exp(lambda)
+n_valori <- c(10, 20, 50, 100, 200, 500, 1000, 5000, 10000, 50000, 100000, 500000, 1000000)
+
+# Linii de cod pentru execuție
+rho_exp(lambda)
+margine_exp(n, lambda)
+sup_exp(n, lambda)
+dataframe_exp(n_valori, lambda)
+plot_cdf_diferenta_exp(n, lambda)
+
+# Exercițiul 8
+#a) definim C_n
+C_n <- sup_exp(n, lambda) / margine_exp(n, lambda, C = 1)
+
+#b) folosim deja metoda Monte-Carlo în funcția sup_binom
+n_valori <- c(30, 50, 100, 200, 500)
+
+calculeaza_Cn <- function(n, lambda, M = 5000, grid_size = 2000, q_low = 1e-4, q_high = 1 - 1e-4, C = 1) {
+  sup_exp(n, lambda, M, grid_size, q_low, q_high) / margine_exp(n, lambda, C)
+}
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, lambda))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+
+#c) variem, pe rând, n (păstrând lambda constant), apoi lambda (păstrând n constant)
+n_valori <- c(30, 50, 100, 200, 500, 1000, 5000, 10000, 15000, 20000)
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, lambda))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+lambda_valori <- seq(1e-4, 1e+3, length.out = 100)
+valori_Cn_lambda <- sapply(lambda_valori, function(lambda) calculeaza_Cn(n, lambda))
+data.frame(
+  lambda = lambda_valori,
+  C_n = valori_Cn_lambda
+)
+
+# d)
+plot(
+  n_valori, valori_Cn_n,
+  type = "b",
+  pch = 19,
+  xlab = "n",
+  ylab = expression(C[n]),
+  main = bquote("Evoluția lui" ~ C[n] ~ "pentru Exp("~.(lambda)~")")
+)
+
+plot(
+  lambda_valori, valori_Cn_lambda,
+  type = "l",
+  lwd = 2,
+  xlab = bquote(lambda),
+  ylab = bquote(C[.(n)]),
+  main = bquote("Evoluția lui" ~ C[.(n)] ~ "pentru Exp("~ lambda ~")")
+)
+```
+
+------------------------------------------------------------------------
+
+### 4.Distribuția Gamma
+
+```{r inegalitatea_Berry_Essen_gamma, fig.width=8, fig.height=6, cache=TRUE}
+
+# Problema 7
+
+# Gamma de parametri alfa și beta
+
+# Funcție ce calculează rho = E[|X-mu|^3]
+f <- function(x, alfa, beta){
+  mu <- alfa / beta
+  
+  abs(x - mu)^3 * dgamma(x, shape = alfa, rate = beta)
+}
+
+rho_gamma <- function(alfa, beta) {
+  integrate(function(x) f(x, alfa, beta), 0, Inf)$value
+}
+
+# Funcție ce calculează marginea Berry-Esseen, dată de inegalitate
+margine_gamma <- function(n, alfa, beta, C = 0.4748) {
+  mu <- alfa / beta
+  sigma <- sqrt(alfa) / beta
+  rho <- rho_gamma(alfa, beta)
+  
+  C * rho / (sigma^3 * sqrt(n))
+}
+
+# Funcție ce aproximează convenabil supremumul din inegalitatea Berry-Esseen
+sup_gamma <- function(n, alfa, beta,
+                    M = 1000000,
+                    grid_size = 2000,
+                    q_low = 1e-4,
+                    q_high = 1 - 1e-4) {
+  mu <- alfa / beta
+  sigma <- sqrt(alfa) / beta
+  
+  X <- matrix(
+    rgamma(M * n, shape = alfa, rate = beta),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+  
+  max(abs(cdf_empirica - cdf_normala))
+}
+
+# Funcție ce construiește dataframe-ul cu marginile Berry-Esseen vs. volumul eșantionului
+dataframe_gamma <- function(n_valori, alfa, beta, C = 0.4748) {
+  margini <- sapply(
+    n_valori,
+    function(n) margine_gamma(n, alfa, beta, C)
+  )
+  
+  data.frame(
+    n = n_valori,
+    margine_BE = margini
+  )
+}
+
+# Funcție ce reprezintă dependența x vs. 
+plot_cdf_diferenta_gamma <- function(n, alfa, beta,
+                                   M = 1000000,
+                                   grid_size = 2000,
+                                   q_low = 1e-4,
+                                   q_high = 1 - 1e-4) {
+  mu <- alfa / beta
+  sigma <- sqrt(alfa) / beta
+  
+  X <- matrix(
+    rgamma(M * n, shape = alfa, rate = beta),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+  
+  diff_abs <- abs(cdf_empirica - cdf_normala)
+  
+  plot(
+    x_grid, diff_abs,
+    type = "l",
+    lwd = 2,
+    col = "blue",
+    xlab = expression(x),
+    ylab = bquote(abs(F[.(n)](x) - Phi(x))),
+    main = bquote("|" * F[.(n)](x) - Phi(x) * "|" ~~ "pentru Gamma("~.(alfa)~","~.(beta)~")")
+  )
+  
+  max_idx <- which.max(diff_abs)
+  points(x_grid[max_idx], diff_abs[max_idx], col = "red", pch = 19)
+  
+  invisible(
+    list(
+      x = x_grid,
+      diff = diff_abs,
+      sup_numeric = max(diff_abs)
+    )
+  )
+}
+
+# Parametri
+n <- 300   #volumul eșantionului
+alfa <- 13    #Gamma(alfa, beta)
+beta <- 50    #Gamma(alfa, beta)
+n_valori <- c(10, 20, 50, 100, 200, 500, 1000, 5000, 10000, 50000, 100000, 500000, 1000000)
+
+# Linii de cod pentru execuție
+rho_gamma(alfa, beta)
+margine_gamma(n, alfa, beta)
+sup_gamma(n, alfa, beta)
+dataframe_gamma(n_valori, alfa, beta)
+plot_cdf_diferenta_gamma(n, alfa, beta)
+
+# Exercițiul 8
+#a) definim C_n
+C_n <- sup_gamma(n, alfa, beta) / margine_gamma(n, alfa, beta, C = 1)
+
+#b) folosim deja metoda Monte-Carlo în funcția sup_binom
+n_valori <- c(30, 50, 100, 200, 500)
+
+calculeaza_Cn <- function(n, alfa, beta, M = 5000, grid_size = 2000, q_low = 1e-4, q_high = 1 - 1e-4, C = 1) {
+  sup_gamma(n, alfa, beta, M, grid_size, q_low, q_high) / margine_gamma(n, alfa, beta, C)
+}
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, alfa, beta))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+
+#c) variem, pe rând, n (păstrând alfa și beta constante), apoi alfa și beta (păstrând n constant)
+n_valori <- c(30, 50, 100, 200, 500, 1000, 5000, 10000, 15000, 20000)
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, alfa, beta))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+
+alfa_valori <- seq(1, 1000, length.out = 40)
+beta_valori <- seq(1, 1000, length.out = 40)
+grid_param <- expand.grid(
+  alfa = alfa_valori,
+  beta = beta_valori
+)
+n <- 100
+grid_param$C_n <- mapply(
+  function(a, b) {
+    calculeaza_Cn(
+      n = n,
+      alfa = a,
+      beta = b,
+      M = 2000
+    )
+  },
+  grid_param$alfa,
+  grid_param$beta
+)
+
+alfa_valori <- seq(1, 500, length.out = 100)
+valori_Cn_alfa <- sapply(alfa_valori, function(alfa) calculeaza_Cn(n, alfa, beta))
+data.frame(
+  alfa = alfa_valori,
+  C_n = valori_Cn_alfa
+)
+
+# d)
+plot(
+  n_valori, valori_Cn_n,
+  type = "b",
+  pch = 19,
+  xlab = "n",
+  ylab = expression(C[n]),
+  main = bquote("Evoluția lui" ~ C[n] ~ "pentru Gamma("~.(alfa)~","~.(beta)~")")
+)
+
+Cn_matrix <- matrix(
+  grid_param$C_n,
+  nrow = length(alfa_valori),
+  ncol = length(beta_valori),
+  byrow = FALSE
+)
+library(plotly)
+
+plot_ly(
+  x = alfa_valori,
+  y = beta_valori,
+  z = Cn_matrix,
+  type = "surface"
+) %>%
+  layout(
+    title = bquote("C"[.(n)] ~ "pentru Gamma("~alpha~","~beta~")"),
+    scene = list(
+      xaxis = list(title = "alpha"),
+      yaxis = list(title = "beta"),
+      zaxis = list(title = "C_n")
+    )
+  )
+
+plot(
+  alfa_valori, valori_Cn_alfa,
+  type = "l",
+  lwd = 2,
+  xlab = bquote(alfa),
+  ylab = bquote(C[.(n)]),
+  main = bquote("Evoluția lui" ~ C[.(n)] ~ "pentru  Gamma("~alpha~","~.(beta)~")")
+)
+```
+
+------------------------------------------------------------------------
+
+### 5.Distribuția Geometrică
+
+```{r inegalitatea_Berry_Essen_geom, fig.width=8, fig.height=6, cache=TRUE}
+
+# Problema 7
+
+# Geometrică de parametru p - singurul inconvenient este că suportul este \mathbb{N}
+
+# Funcție ce calculează rho = E[|X-mu|^3]
+rho_geom <- function(p) {
+  mu <- (1 - p) / p
+  k <- 0:10^6
+  
+  sum(abs(k - mu)^3 * dgeom(k, prob = p))
+}
+
+# Funcție ce calculează marginea Berry-Esseen, dată de inegalitate
+margine_geom <- function(n, p, C = 0.4748) {
+  mu <- (1 - p) / p
+  sigma <- sqrt(1-p) / p
+  rho <- rho_geom(p)
+  
+  C * rho / (sigma^3 * sqrt(n))
+}
+
+# Funcție ce aproximează convenabil supremumul din inegalitatea Berry-Esseen
+sup_geom <- function(n, p,
+                      M = 1000000,
+                      grid_size = 2000,
+                      q_low = 1e-4,
+                      q_high = 1 - 1e-4) {
+  mu <- (1 - p) / p
+  sigma <- sqrt(1-p) / p
+  
+  X <- matrix(
+    rgeom(M * n, prob = p),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+  
+  max(abs(cdf_empirica - cdf_normala))
+}
+
+# Funcție ce construiește dataframe-ul cu marginile Berry-Esseen vs. volumul eșantionului
+dataframe_geom <- function(n_valori, p, C = 0.4748) {
+  margini <- sapply(
+    n_valori,
+    function(n) margine_geom(n, p, C)
+  )
+  
+  data.frame(
+    n = n_valori,
+    margine_BE = margini
+  )
+}
+
+# Funcție ce reprezintă dependența x vs. 
+plot_cdf_diferenta_geom <- function(n, p,
+                               M = 1000000,
+                               grid_size = 2000,
+                               q_low = 1e-4,
+                               q_high = 1 - 1e-4) {
+  mu <- (1 - p) / p
+  sigma <- sqrt(1-p) / p
+  
+  X <- matrix(
+    rgeom(M * n, prob = p),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+  
+  diff_abs <- abs(cdf_empirica - cdf_normala)
+  
+  plot(
+    x_grid, diff_abs,
+    type = "l",
+    lwd = 2,
+    col = "blue",
+    xlab = expression(x),
+    ylab = bquote(abs(F[.(n)](x) - Phi(x))),
+    main = bquote("|" * F[.(n)](x) - Phi(x) * "|" ~~ "pentru Geom("~.(p)~")")
+  )
+  
+  max_idx <- which.max(diff_abs)
+  points(x_grid[max_idx], diff_abs[max_idx], col = "red", pch = 19)
+  
+  invisible(
+    list(
+      x = x_grid,
+      diff = diff_abs,
+      sup_numeric = max(diff_abs)
+    )
+  )
+}
+
+# Parametri
+n <- 300   #volumul eșantionului
+p <- 0.75    #Geom(p)
+n_valori <- c(10, 20, 50, 100, 200, 500, 1000, 5000, 10000, 50000, 100000, 500000, 1000000)
+
+# Linii de cod pentru execuție
+rho_geom(p)
+margine_geom(n, p)
+sup_geom(n, p)
+dataframe_geom(n_valori, p)
+plot_cdf_diferenta_geom(n, p)
+
+# Exercițiul 8
+#a) definim C_n
+C_n <- sup_geom(n, p) / margine_geom(n, p, C = 1)
+
+#b) folosim deja metoda Monte-Carlo în funcția sup_binom
+n_valori <- c(30, 50, 100, 200, 500)
+
+calculeaza_Cn <- function(n, p, M = 5000, grid_size = 2000, q_low = 1e-4, q_high = 1 - 1e-4, C = 1) {
+  sup_geom(n, p, M, grid_size, q_low, q_high) / margine_geom(n, p, C)
+}
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, p))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+
+#c) variem, pe rând, n (păstrând p constant), apoi p (păstrând n constant)
+n_valori <- c(30, 50, 100, 200, 500, 1000, 5000, 10000, 15000, 20000)
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, p))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+p_valori <- seq(1e-6, 1 - 1e-6, length.out = 100)
+valori_Cn_p <- sapply(p_valori, function(p) calculeaza_Cn(n, p))
+data.frame(
+  p = p_valori,
+  C_n = valori_Cn_p
+)
+
+# d)
+plot(
+  n_valori, valori_Cn_n,
+  type = "b",
+  pch = 19,
+  xlab = "n",
+  ylab = expression(C[n]),
+  main = bquote("Evoluția lui" ~ C[n] ~ "pentru Geom("~.(p)~")")
+)
+
+plot(
+  p_valori, valori_Cn_p,
+  type = "l",
+  lwd = 2,
+  xlab = "p",
+  ylab = bquote(C[.(n)]),
+  main = bquote("Evoluția lui" ~ C[.(n)] ~ "pentru Geom("~ p ~")")
+)
+```
+
+------------------------------------------------------------------------
+
+### 6.Distribuția Poisson
+
+```{r inegalitatea_Berry_Essen_poisson, fig.width=8, fig.height=6, cache=TRUE}
+
+# Problema 7
+
+# Poisson de parametru lambda - singurul inconvenient este că suportul este \mathbb{N}
+
+# Funcție ce calculează rho = E[|X-mu|^3]
+rho_poisson <- function(lambda) {
+  mu <- lambda
+  k <- 0:10^6
+  
+  sum(abs(k - mu)^3 * dpois(k, lambda = lambda))
+}
+
+# Funcție ce calculează marginea Berry-Esseen, dată de inegalitate
+margine_poisson <- function(n, lambda, C = 0.4748) {
+  mu <- lambda
+  sigma <- sqrt(lambda)
+  rho <- rho_poisson(lambda)
+  
+  C * rho / (sigma^3 * sqrt(n))
+}
+
+# Funcție ce aproximează convenabil supremumul din inegalitatea Berry-Esseen
+sup_poisson <- function(n, lambda,
+                     M = 1000000,
+                     grid_size = 2000,
+                     q_low = 1e-4,
+                     q_high = 1 - 1e-4) {
+  mu <- lambda
+  sigma <- sqrt(lambda)
+  
+  X <- matrix(
+    rpois(M * n, lambda = lambda),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+  
+  max(abs(cdf_empirica - cdf_normala))
+}
+
+# Funcție ce construiește dataframe-ul cu marginile Berry-Esseen vs. volumul eșantionului
+dataframe_poisson <- function(n_valori, lambda, C = 0.4748) {
+  margini <- sapply(
+    n_valori,
+    function(n) margine_poisson(n, lambda, C)
+  )
+  
+  data.frame(
+    n = n_valori,
+    margine_BE = margini
+  )
+}
+
+# Funcție ce reprezintă dependența x vs. 
+plot_cdf_diferenta_poisson <- function(n, lambda,
+                                    M = 1000000,
+                                    grid_size = 2000,
+                                    q_low = 1e-4,
+                                    q_high = 1 - 1e-4) {
+  mu <- lambda
+  sigma <- sqrt(lambda)
+  
+  X <- matrix(
+    rpois(M * n, lambda = lambda),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+  
+  diff_abs <- abs(cdf_empirica - cdf_normala)
+  
+  plot(
+    x_grid, diff_abs,
+    type = "l",
+    lwd = 2,
+    col = "blue",
+    xlab = expression(x),
+    ylab = bquote(abs(F[.(n)](x) - Phi(x))),
+    main = bquote("|" * F[.(n)](x) - Phi(x) * "|" ~~ "pentru Pois("~.(lambda)~")")
+  )
+  
+  max_idx <- which.max(diff_abs)
+  points(x_grid[max_idx], diff_abs[max_idx], col = "red", pch = 19)
+  
+  invisible(
+    list(
+      x = x_grid,
+      diff = diff_abs,
+      sup_numeric = max(diff_abs)
+    )
+  )
+}
+
+# Parametri
+n <- 300   #volumul eșantionului
+lambda <- 13    #Poisson(lambda)
+n_valori <- c(10, 20, 50, 100, 200, 500, 1000, 5000, 10000, 50000, 100000, 500000, 1000000)
+
+# Linii de cod pentru execuție
+rho_poisson(lambda)
+margine_poisson(n, lambda)
+sup_poisson(n, lambda)
+dataframe_poisson(n_valori, lambda)
+plot_cdf_diferenta_poisson(n, lambda)
+
+# Exercițiul 8
+#a) definim C_n
+C_n <- sup_poisson(n, lambda) / margine_poisson(n, lambda, C = 1)
+
+#b) folosim deja metoda Monte-Carlo în funcția sup_binom
+n_valori <- c(30, 50, 100, 200, 500)
+
+calculeaza_Cn <- function(n, lambda, M = 5000, grid_size = 2000, q_low = 1e-4, q_high = 1 - 1e-4, C = 1) {
+  sup_poisson(n, lambda, M, grid_size, q_low, q_high) / margine_poisson(n, lambda, C)
+}
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, lambda))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+
+#c) variem, pe rând, n (păstrând lambda constant), apoi lambda (păstrând n constant)
+n_valori <- c(30, 50, 100, 200, 500, 1000, 5000, 10000, 15000, 20000)
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, lambda))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+lambda_valori <- seq(1e-6, 1e+3, length.out = 100)
+valori_Cn_lambda <- sapply(lambda_valori, function(lambda) calculeaza_Cn(n, lambda))
+data.frame(
+  lambda = lambda_valori,
+  C_n = valori_Cn_lambda
+)
+
+# d)
+plot(
+  n_valori, valori_Cn_n,
+  type = "b",
+  pch = 19,
+  xlab = "n",
+  ylab = expression(C[n]),
+  main = bquote("Evoluția lui" ~ C[n] ~ "pentru Pois("~.(lambda)~")")
+)
+
+plot(
+  lambda_valori, valori_Cn_lambda,
+  type = "l",
+  lwd = 2,
+  xlab = bquote(lambda),
+  ylab = bquote(C[.(n)]),
+  main = bquote("Evoluția lui" ~ C[.(n)] ~ "pentru Pois("~ lambda ~")")
+)
+```
+
+------------------------------------------------------------------------
+
+### 7.Uniforma Discretă
+
+```{r inegalitatea_Berry_Essen_unif_discreta, fig.width=8, fig.height=6, cache=TRUE}
+
+# Problema 7
+
+# Uniformă discretă pe mulțimea {a, a+1, ..., b-1, b}
+
+# Funcție ce calculează rho = E[|X-mu|^3]
+rho_dunif <- function(a, b) {
+  mu <- (a + b) / 2
+  k <- a:b
+  p <- 1 / (b - a + 1)
+  
+  sum(abs(k - mu)^3 * p)
+}
+
+# Funcție ce calculează marginea Berry-Esseen, dată de inegalitate
+margine_dunif <- function(n, a, b, C = 0.4748) {
+  mu <- (a + b) / 2
+  sigma <- sqrt(((b - a + 1)^2 - 1) / 12)
+  rho <- rho_dunif(a, b)
+  
+  C * rho / (sigma^3 * sqrt(n))
+}
+
+# Funcție ce aproximează convenabil supremumul din inegalitatea Berry-Esseen
+sup_dunif <- function(n, a, b,
+                        M = 1000000,
+                        grid_size = 2000,
+                        q_low = 1e-4,
+                        q_high = 1 - 1e-4) {
+  mu <- (a + b) / 2
+  sigma <- sqrt(((b - a + 1)^2 - 1) / 12)
+  
+  X <- matrix(
+    sample(a:b, size = M * n, replace = TRUE),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+  
+  max(abs(cdf_empirica - cdf_normala))
+}
+
+# Funcție ce construiește dataframe-ul cu marginile Berry-Esseen vs. volumul eșantionului
+dataframe_dunif <- function(n_valori, a, b, C = 0.4748) {
+  margini <- sapply(
+    n_valori,
+    function(n) margine_dunif(n, a, b, C)
+  )
+  
+  data.frame(
+    n = n_valori,
+    margine_BE = margini
+  )
+}
+
+# Funcție ce reprezintă dependența x vs. 
+plot_cdf_diferenta_dunif <- function(n, a, b,
+                                       M = 1000000,
+                                       grid_size = 2000,
+                                       q_low = 1e-4,
+                                       q_high = 1 - 1e-4) {
+  mu <- (a + b) / 2
+  sigma <- sqrt(((b - a + 1)^2 - 1) / 12)
+  
+  X <- matrix(
+    sample(a:b, size = M * n, replace = TRUE),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+  
+  diff_abs <- abs(cdf_empirica - cdf_normala)
+  
+  plot(
+    x_grid, diff_abs,
+    type = "l",
+    lwd = 2,
+    col = "blue",
+    xlab = expression(x),
+    ylab = bquote(abs(F[.(n)](x) - Phi(x))),
+    main = bquote("|" * F[.(n)](x) - Phi(x) * "|" ~~ "pentru DUnif("~.(a)~","~.(b)~")")
+  )
+  
+  max_idx <- which.max(diff_abs)
+  points(x_grid[max_idx], diff_abs[max_idx], col = "red", pch = 19)
+  
+  invisible(
+    list(
+      x = x_grid,
+      diff = diff_abs,
+      sup_numeric = max(diff_abs)
+    )
+  )
+}
+
+# Parametri
+n <- 300   #volumul eșantionului
+a <- 50    #Unif({a, a+1, ..., b-1, b})
+b <- 123   #Unif({a, a+1, ..., b-1, b})
+n_valori <- c(10, 20, 50, 100, 200, 500, 1000, 5000, 10000, 50000, 100000, 500000, 1000000)
+
+# Linii de cod pentru execuție
+rho_dunif(a, b)
+margine_dunif(n, a, b)
+sup_dunif(n, a, b)
+dataframe_dunif(n_valori, a, b)
+plot_cdf_diferenta_dunif(n, a, b)
+
+# Exercițiul 8
+#a) definim C_n
+C_n <- sup_dunif(n, a, b) / margine_dunif(n, a, b, C = 1)
+
+#b) folosim deja metoda Monte-Carlo în funcția sup_binom
+n_valori <- c(30, 50, 100, 200, 500)
+
+calculeaza_Cn <- function(n, a, b, M = 5000, grid_size = 2000, q_low = 1e-4, q_high = 1 - 1e-4, C = 1) {
+  sup_dunif(n, a, b, M, grid_size, q_low, q_high) / margine_dunif(n, a, b, C)
+}
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, a, b))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+
+#c) variem, pe rând, n (păstrând b-a constant), apoi b-a (păstrând n constant)
+n_valori <- c(30, 50, 100, 200, 500, 1000, 5000, 10000, 15000, 20000)
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, a, b))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+centru <- (a + b) / 2
+l_valori <- seq(1, 1e+3, length.out = 100)
+valori_Cn_l <- sapply(l_valori, function(l) {
+  a <- centru - floor(l / 2)
+  b <- centru + ceiling (l / 2)
+  calculeaza_Cn(n, a, b)
+  })
+data.frame(
+  delta_centru = l_valori,
+  C_n = valori_Cn_l
+)
+
+# d)
+plot(
+  n_valori, valori_Cn_n,
+  type = "b",
+  pch = 19,
+  xlab = "n",
+  ylab = expression(C[n]),
+  main = bquote("Evoluția lui" ~ C[n] ~ "pentru DUnif("~.(a)~","~.(b)~")")
+)
+
+plot(
+  l_valori, valori_Cn_l,
+  type = "l",
+  lwd = 2,
+  xlab = bquote(delta),
+  ylab = bquote(C[.(n)]),
+  main = bquote("Evoluția lui" ~ C[.(n)] ~ "pentru DUnif(" ~ 
+                  .(a) ~ - ~ group(lfloor, delta/2, rfloor) ~ "," ~ 
+                  .(b) ~ + ~ group(lceil, delta/2, rceil) ~ ")")
+)
+
+```
+
+------------------------------------------------------------------------
+
+### 8. Uniforma Continuă
+
+```{r inegalitatea_Berry_Essen_unif_cont, fig.width=8, fig.height=6, cache=TRUE}
+# Problema 7
+
+# Uniformă continuă pe intervalul [a, b]
+
+# Funcție ce calculează rho = E[|X-mu|^3]
+f <- function(x, a, b){
+  mu <- (a + b) / 2
+  
+  abs(x - mu)^3 * dunif(x, min = a, max = b)
+}
+
+rho_cunif <- function(a, b) {
+  integrate(function(x) f(x, a, b), a, b)$value
+}
+
+# Funcție ce calculează marginea Berry-Esseen, dată de inegalitate
+margine_cunif <- function(n, a, b, C = 0.4748) {
+  mu <- (a + b) / 2
+  sigma <- (b - a) / sqrt(12)
+  rho <- rho_cunif(a, b)
+  
+  C * rho / (sigma^3 * sqrt(n))
+}
+
+# Funcție ce aproximează convenabil supremumul din inegalitatea Berry-Esseen
+sup_cunif <- function(n, a, b,
+                      M = 1000000,
+                      grid_size = 2000,
+                      q_low = 1e-4,
+                      q_high = 1 - 1e-4) {
+  mu <- (a + b) / 2
+  sigma <- (b - a) / sqrt(12)
+  
+  X <- matrix(
+    runif(M * n, min = a, max = b),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+  
+  max(abs(cdf_empirica - cdf_normala))
+}
+
+# Funcție ce construiește dataframe-ul cu marginile Berry-Esseen vs. volumul eșantionului
+dataframe_cunif <- function(n_valori, a, b, C = 0.4748) {
+  margini <- sapply(
+    n_valori,
+    function(n) margine_cunif(n, a, b, C)
+  )
+  
+  data.frame(
+    n = n_valori,
+    margine_BE = margini
+  )
+}
+
+# Funcție ce reprezintă dependența x vs. 
+plot_cdf_diferenta_cunif <- function(n, a, b,
+                                     M = 1000000,
+                                     grid_size = 2000,
+                                     q_low = 1e-4,
+                                     q_high = 1 - 1e-4) {
+  mu <- (a + b) / 2
+  sigma <- (b - a) / sqrt(12)
+  
+  X <- matrix(
+    runif(M * n, min = a, max = b),
+    nrow = M,
+    ncol = n
+  )
+  X_bar <- rowMeans(X)
+  
+  Z <- sqrt(n) * (X_bar - mu) / sigma
+  
+  probs <- seq(q_low, q_high, length.out = grid_size)
+  x_grid <- qnorm(probs)
+  
+  cdf_empirica <- sapply(
+    x_grid,
+    function(x) mean(Z <= x)
+  )
+  cdf_normala <- pnorm(x_grid)
+  
+  diff_abs <- abs(cdf_empirica - cdf_normala)
+  
+  plot(
+    x_grid, diff_abs,
+    type = "l",
+    lwd = 2,
+    col = "blue",
+    xlab = expression(x),
+    ylab = bquote(abs(F[.(n)](x) - Phi(x))),
+    main = bquote("|" * F[.(n)](x) - Phi(x) * "|" ~~ "pentru Unif("~.(a)~","~.(b)~")")
+  )
+  
+  max_idx <- which.max(diff_abs)
+  points(x_grid[max_idx], diff_abs[max_idx], col = "red", pch = 19)
+  
+  invisible(
+    list(
+      x = x_grid,
+      diff = diff_abs,
+      sup_numeric = max(diff_abs)
+    )
+  )
+}
+
+# Parametri
+n <- 300   #volumul eșantionului
+a <- 25    #Unif([a, b])
+b <- 150   #Unif([a, b])
+n_valori <- c(10, 20, 50, 100, 200, 500, 1000, 5000, 10000, 50000, 100000, 500000, 1000000)
+
+# Linii de cod pentru execuție
+rho_cunif(a, b)
+margine_cunif(n, a, b)
+sup_cunif(n, a, b)
+dataframe_cunif(n_valori, a, b)
+plot_cdf_diferenta_cunif(n, a, b)
+
+
+# Exercițiul 8
+#a) definim C_n
+C_n <- sup_cunif(n, a, b) / margine_cunif(n, a, b, C = 1)
+
+#b) folosim deja metoda Monte-Carlo în funcția sup_binom
+n_valori <- c(30, 50, 100, 200, 500)
+
+calculeaza_Cn <- function(n, a, b, M = 5000, grid_size = 2000, q_low = 1e-4, q_high = 1 - 1e-4, C = 1) {
+  sup_cunif(n, a, b, M, grid_size, q_low, q_high) / margine_cunif(n, a, b, C)
+}
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, a, b))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+
+#c) variem, pe rând, n (păstrând b-a constant), apoi b-a (păstrând n constant)
+n_valori <- c(30, 50, 100, 200, 500, 1000, 5000, 10000, 15000, 20000)
+valori_Cn_n <- sapply(n_valori, function(n) calculeaza_Cn(n, a, b))
+data.frame(
+  n = n_valori,
+  C_n = valori_Cn_n
+)
+centru <- (a + b) / 2
+l_valori <- seq(1, 1e+3, length.out = 100)
+valori_Cn_l <- sapply(l_valori, function(l) {
+  a <- centru - l / 2
+  b <- centru + l / 2
+  calculeaza_Cn(n, a, b)
+})
+data.frame(
+  delta_centru = l_valori,
+  C_n = valori_Cn_l
+)
+
+# d)
+plot(
+  n_valori, valori_Cn_n,
+  type = "b",
+  pch = 19,
+  xlab = "n",
+  ylab = expression(C[n]),
+  main = bquote("Evoluția lui" ~ C[n] ~ "pentru Unif("~.(a)~","~.(b)~")")
+)
+
+plot(
+  l_valori, valori_Cn_l,
+  type = "l",
+  lwd = 2,
+  xlab = bquote(delta),
+  ylab = bquote(C[.(n)]),
+  main = bquote("Evoluția lui" ~ C[.(n)] ~ "pentru Unif("~.(a) - delta/2 ~","~.(b) + delta / 2~")")
+)
+```
+
+------------------------------------------------------------------------
+
+## Exercițiul 9
+
+a)  Rolul familiei exponențiale în simplificarea estimării parametrilor.
+    Stiind apartenenta unei distributii la familia exponentiala, avem
+    forma generala pentru fiecare densitate/functie de masa, asta
+    ajutandu-ne sa calculam functia de log-verosimilitate mai usor si sa
+    eficientizam calculele in estimarea parametrului prin metoda
+    verosimilitatii maxime.
+
+b)  Influența momentului de ordin 3 asupra vitezei de convergență în
+    TLC. Momentul de ordinul 3 influenteaza viteza de convergenta prin
+    inegalitatea Berry-Esseen care ne arata ca pentru rho mic,
+    supremumul este mai mic, deci convergenta e mai rapida. De asemenea
+    raportul rho/sigma\^3 cuantifica asimetria distributiei, pentru rho
+    mare avem distributii asimetrice si convergenta lenta din cauza
+    cozilor grele.
+
+c)  Semnificația practică este aceea că inegalitatea Berry-Esseen este
+    conservatoare. În practică, eroarea de aproximare normală este
+    adesea mult mai mică decât prezice limita teoretică, ceea ce ne
+    permite să aplicăm Teorema Limită Centrală (TLC) cu încredere chiar
+    și pentru eșantioane moderate (n≈30−50), fără a atinge limita
+    pesimistă a inegalității.
+
+d)  La distribuțiile discrete (Binomială, Poisson), funcția de
+    repartiție Fn este "în trepte". Chiar dacă distribuția este
+    simetrică, aproximarea printr-o funcție continuă (Φ) suferă de o
+    eroare inerentă legată de discretizare (efect de rețea), spre
+    deosebire de distributiile continue pentru care aproximarile au fost
+    mult mai fine.Așa cum am văzut la punctul (b), distribuțiile
+    puternic asimetrice (Exponențiala) au cea mai slabă acuratețe pentru
+    n mic. Diferența ∣Fn −Φ∣ rămâne semnificativă în "cozi" mult timp
+    după ce zona centrală a devenit normală.
+
+e)  In estimare, așa cum s-a discutat la (a), structura analitică
+    permite calculul exact și eficient al parametrilor, fără necesitatea
+    unor metode numerice complexe. In sensul aproximarii asimptotice,
+    membrii familiei exponențiale au momente bine definite și finite
+    (ρ\<∞). Graficele evoluției lui Cn din exercițiul 8 arată curbe cu
+    variatie marginita și predictibile în funcție de parametrii α,β,p.
+    Nu există comportamente haotice. Această stabilitate sugerează că
+    trecerea de la distribuția specifică la cea Normală (via TLC) este
+    un proces natural și controlat de parametrii de formă ai familiei.
